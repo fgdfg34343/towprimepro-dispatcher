@@ -1,0 +1,97 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Функция проверки авторизации
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Коллекция водителей
+    match /drivers/{driverId} {
+      // Любой аутентифицированный может читать
+      allow read: if isAuthenticated();
+      // Водитель может обновлять свой профиль
+      allow update, create: if isAuthenticated() && request.auth.uid == driverId;
+      // Любой аутентифицированный может обновлять (для диспетчера)
+      allow update: if isAuthenticated();
+      allow delete: if isAuthenticated();
+    }
+    
+    // Коллекция местоположений водителей - КРИТИЧНО!
+    match /driverLocations/{driverId} {
+      // Любой аутентифицированный может читать
+      allow read: if isAuthenticated();
+      // Водитель может создавать и обновлять свою запись
+      allow create, update: if isAuthenticated() && request.auth.uid == driverId;
+      // Диспетчер может создавать и обновлять любую запись
+      allow create, update: if isAuthenticated();
+      allow delete: if isAuthenticated();
+    }
+    
+    // Чаты поддержки
+    match /supportChats/{chatId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated();
+      allow delete: if isAuthenticated();
+      
+      // Подколлекция сообщений
+      match /messages/{messageId} {
+        allow read: if isAuthenticated();
+        allow create: if isAuthenticated();
+        allow update: if isAuthenticated();
+        allow delete: if isAuthenticated();
+      }
+    }
+    
+    // Клиентские чаты поддержки (используются приложением клиента)
+    match /clientSupportChats/{chatId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated();
+      allow delete: if isAuthenticated();
+      
+      match /messages/{messageId} {
+        allow read: if isAuthenticated();
+        allow create: if isAuthenticated();
+        allow update: if isAuthenticated();
+        allow delete: if isAuthenticated();
+      }
+    }
+    
+    // Коллекция заказов
+    match /orders/{orderId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update, delete: if isAuthenticated();
+    }
+    
+    // Клиентские чаты поддержки (коллекция приложения клиента)
+    match /support_chats/{chatId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated();
+      allow delete: if isAuthenticated();
+      
+      match /messages/{messageId} {
+        allow read: if isAuthenticated();
+        allow create: if isAuthenticated();
+        allow update: if isAuthenticated();
+        allow delete: if isAuthenticated();
+      }
+    }
+    
+    // Настройки
+    match /settings/{document=**} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+
+    // collectionGroup — для запросов по всем subcollection "messages"
+    match /{path=**}/messages/{messageId} {
+      allow read: if isAuthenticated();
+    }
+  }
+}
