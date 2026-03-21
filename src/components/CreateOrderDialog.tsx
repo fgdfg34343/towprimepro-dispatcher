@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
@@ -38,6 +38,9 @@ const PRICING_PER_KM = 65;
 const PRICING_INCLUDED_KM = 5;
 const PRICING_MINIMUM = 1500;
 const DISTANCE_DEBOUNCE_MS = 600;
+const ADDRESS_AUTOCOMPLETE_DEBOUNCE_MS = 250;
+const ADDRESS_SUGGESTION_LIMIT = 6;
+const ADDRESS_MIN_LENGTH = 3;
 
 const CURRENCY_FORMATTER = new Intl.NumberFormat("ru-RU", {
   style: "currency",
@@ -69,6 +72,15 @@ interface DistanceInfo {
   originAddress: string;
   destinationAddress: string;
 }
+
+interface AddressSuggestion {
+  placeId: string;
+  description: string;
+  mainText: string;
+  secondaryText: string;
+}
+
+type AddressFieldKey = "pickup" | "dropoff";
 
 function sanitizeNumericInput(value: string): string {
   return value.replace(/\s/g, "").replace(",", ".");
@@ -155,7 +167,11 @@ export function CreateOrderDialog({
   const [distanceInfo, setDistanceInfo] = useState<DistanceInfo | null>(null);
   const [distanceError, setDistanceError] = useState<string | null>(null);
   const [distanceLoading, setDistanceLoading] = useState(false);
+  const [pickupSuggestions, setPickupSuggestions] = useState<AddressSuggestion[]>([]);
+  const [dropoffSuggestions, setDropoffSuggestions] = useState<AddressSuggestion[]>([]);
+  const [activeAddressField, setActiveAddressField] = useState<AddressFieldKey | null>(null);
   const costManuallyEditedRef = useRef(false);
+  const autocompleteServiceRef = useRef<google.maps.places.AutocompleteService | null>(null);
   const previousAddressesRef = useRef<{ pickup: string; dropoff: string }>({
     pickup: "",
     dropoff: "",
@@ -171,6 +187,145 @@ export function CreateOrderDialog({
   const costValueRaw = form.watch("estimatedCost");
   const clientNameValue = form.watch("clientName");
   const vehicleTypeValue = form.watch("vehicleType");
+
+  const getAutocompleteService = useCallback(() => {
+    if (typeof window === "undefined") {
+      return null;
+    }
+
+    const placesApi = window.google?.maps?.places;
+    if (!placesApi?.AutocompleteService) {
+      return null;
+    }
+
+    if (!autocompleteServiceRef.current) {
+      autocompleteServiceRef.current = new placesApi.AutocompleteService();
+    }
+
+    return autocompleteServiceRef.current;
+  }, []);
+
+  const selectAddressSuggestion = useCallback(
+    (field: AddressFieldKey, suggestion: AddressSuggestion) => {
+      const fieldName = field === "pickup" ? "pickupAddress" : "dropoffAddress";
+      form.setValue(fieldName, suggestion.description, {
+        shouldDirty: true,
+        shouldTouch: true,
+        shouldValidate: true,
+      });
+      setActiveAddressField(null);
+      if (field === "pickup") {
+        setPickupSuggestions([]);
+      } else {
+        setDropoffSuggestions([]);
+      }
+    },
+    [form],
+  );
+
+  useEffect(() => {
+    if (!open || activeAddressField !== "pickup") {
+      setPickupSuggestions([]);
+      return;
+    }
+
+    const query = pickupAddressValue.trim();
+    const service = getAutocompleteService();
+    if (!service || query.length < ADDRESS_MIN_LENGTH) {
+      setPickupSuggestions([]);
+      return;
+    }
+
+    let cancelled = false;
+    const timeoutId = window.setTimeout(() => {
+      service.getPlacePredictions(
+        {
+          input: query,
+          componentRestrictions: { country: "ru" },
+          types: ["address"],
+        },
+        (predictions, status) => {
+          if (cancelled) {
+            return;
+          }
+
+          if (
+            status !== google.maps.places.PlacesServiceStatus.OK ||
+            !predictions?.length
+          ) {
+            setPickupSuggestions([]);
+            return;
+          }
+
+          setPickupSuggestions(
+            predictions.slice(0, ADDRESS_SUGGESTION_LIMIT).map((prediction) => ({
+              placeId: prediction.place_id,
+              description: prediction.description,
+              mainText: prediction.structured_formatting.main_text,
+              secondaryText: prediction.structured_formatting.secondary_text,
+            })),
+          );
+        },
+      );
+    }, ADDRESS_AUTOCOMPLETE_DEBOUNCE_MS);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeoutId);
+    };
+  }, [activeAddressField, getAutocompleteService, open, pickupAddressValue]);
+
+  useEffect(() => {
+    if (!open || activeAddressField !== "dropoff") {
+      setDropoffSuggestions([]);
+      return;
+    }
+
+    const query = dropoffAddressValue.trim();
+    const service = getAutocompleteService();
+    if (!service || query.length < ADDRESS_MIN_LENGTH) {
+      setDropoffSuggestions([]);
+      return;
+    }
+
+    let cancelled = false;
+    const timeoutId = window.setTimeout(() => {
+      service.getPlacePredictions(
+        {
+          input: query,
+          componentRestrictions: { country: "ru" },
+          types: ["address"],
+        },
+        (predictions, status) => {
+          if (cancelled) {
+            return;
+          }
+
+          if (
+            status !== google.maps.places.PlacesServiceStatus.OK ||
+            !predictions?.length
+          ) {
+            setDropoffSuggestions([]);
+            return;
+          }
+
+          setDropoffSuggestions(
+            predictions.slice(0, ADDRESS_SUGGESTION_LIMIT).map((prediction) => ({
+              placeId: prediction.place_id,
+              description: prediction.description,
+              mainText: prediction.structured_formatting.main_text,
+              secondaryText: prediction.structured_formatting.secondary_text,
+            })),
+          );
+        },
+      );
+    }, ADDRESS_AUTOCOMPLETE_DEBOUNCE_MS);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeoutId);
+    };
+  }, [activeAddressField, getAutocompleteService, open, dropoffAddressValue]);
 
   const requiredFieldsFilled =
     clientNameValue.trim().length > 0 &&
@@ -333,6 +488,9 @@ export function CreateOrderDialog({
       const selectedDriver = values.driverId
         ? availableDrivers.find((driver) => driver.id === values.driverId)
         : undefined;
+      const driverAssignmentId = selectedDriver
+        ? (selectedDriver.authUid?.trim() || selectedDriver.id)
+        : null;
 
       if (!Number.isFinite(amount) || amount <= 0) {
         throw new Error("Некорректная стоимость заказа");
@@ -347,9 +505,10 @@ export function CreateOrderDialog({
       };
 
       metadata.assignment = {
-        source: selectedDriver ? "dispatcher-manual" : "unassigned",
+        source: driverAssignmentId ? "dispatcher-manual" : "unassigned",
         assignedAutomatically: false,
-        driverId: selectedDriver?.id ?? null,
+        driverId: driverAssignmentId,
+        driverDocId: selectedDriver?.id ?? null,
       };
 
       if (distanceInfo) {
@@ -389,10 +548,18 @@ export function CreateOrderDialog({
         dropoffAddress: values.dropoffAddress.trim(),
         vehicleType: values.vehicleType.trim(),
         notes: trimmedNotes.length > 0 ? trimmedNotes : null,
-        status: values.driverId ? "assigned" : "new",
+        status: driverAssignmentId ? "assigned" : "new",
         priority: false,
         assignedAutomatically: false,
-        assignmentSource: selectedDriver ? "dispatcher-manual" : "unassigned",
+        assignmentSource: driverAssignmentId ? "dispatcher-manual" : "unassigned",
+        driverId: driverAssignmentId,
+        assignedDriverId: driverAssignmentId,
+        driverName: selectedDriver ? (selectedDriver.fullName || "Водитель").trim() : null,
+        assignedDriverName: selectedDriver ? (selectedDriver.fullName || "Водитель").trim() : null,
+        driverPhone: selectedDriver?.phoneNumber ?? null,
+        assignedDriverPhone: selectedDriver?.phoneNumber ?? null,
+        driverVehicleType: selectedDriver?.vehicleType ?? null,
+        assignedDriverVehicleType: selectedDriver?.vehicleType ?? null,
         metadata,
         pricing: pricingPayload,
         estimatedCost: amount,
@@ -414,7 +581,7 @@ export function CreateOrderDialog({
       const ordersRef = collection(db, "orders");
       const docRef = await addDoc(ordersRef, payload);
 
-      if (selectedDriver) {
+      if (selectedDriver && driverAssignmentId) {
         const fallbackName = [selectedDriver.firstName, selectedDriver.lastName]
           .filter(Boolean)
           .join(" ")
@@ -423,7 +590,7 @@ export function CreateOrderDialog({
 
         await onAssignDriver({
           orderId: docRef.id,
-          driverId: selectedDriver.id,
+          driverId: driverAssignmentId,
           driverName,
           driverPhone: selectedDriver.phoneNumber,
           vehicleType: selectedDriver.vehicleType,
@@ -521,15 +688,45 @@ export function CreateOrderDialog({
                   control={form.control}
                   name="pickupAddress"
                   render={({ field }) => (
-                    <FormItem>
+                    <FormItem className="relative">
                       <FormLabel>Откуда забрать</FormLabel>
                       <FormControl>
                         <Input
                           placeholder="Адрес подачи"
                           className="border-border bg-slate-100 text-slate-900 placeholder:text-slate-400"
                           {...field}
+                          onFocus={() => setActiveAddressField("pickup")}
+                          onBlur={() => {
+                            window.setTimeout(() => {
+                              setActiveAddressField((current) =>
+                                current === "pickup" ? null : current,
+                              );
+                            }, 150);
+                          }}
                         />
                       </FormControl>
+                      {activeAddressField === "pickup" && pickupSuggestions.length > 0 && (
+                        <div className="absolute left-0 right-0 top-full z-20 mt-2 overflow-hidden rounded-xl border border-border bg-white shadow-xl">
+                          {pickupSuggestions.map((suggestion) => (
+                            <button
+                              key={suggestion.placeId}
+                              type="button"
+                              className="flex w-full flex-col items-start gap-0.5 border-b border-border/60 px-3 py-2 text-left text-sm last:border-b-0 hover:bg-orange-50"
+                              onMouseDown={(event) => {
+                                event.preventDefault();
+                                selectAddressSuggestion("pickup", suggestion);
+                              }}
+                            >
+                              <span className="font-medium text-slate-900">
+                                {suggestion.mainText}
+                              </span>
+                              <span className="text-xs text-slate-500">
+                                {suggestion.secondaryText || suggestion.description}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
                       <FormMessage />
                     </FormItem>
                   )}
@@ -539,15 +736,45 @@ export function CreateOrderDialog({
                   control={form.control}
                   name="dropoffAddress"
                   render={({ field }) => (
-                    <FormItem>
+                    <FormItem className="relative">
                       <FormLabel>Куда доставить</FormLabel>
                       <FormControl>
                         <Input
                           placeholder="Адрес назначения"
                           className="border-border bg-slate-100 text-slate-900 placeholder:text-slate-400"
                           {...field}
+                          onFocus={() => setActiveAddressField("dropoff")}
+                          onBlur={() => {
+                            window.setTimeout(() => {
+                              setActiveAddressField((current) =>
+                                current === "dropoff" ? null : current,
+                              );
+                            }, 150);
+                          }}
                         />
                       </FormControl>
+                      {activeAddressField === "dropoff" && dropoffSuggestions.length > 0 && (
+                        <div className="absolute left-0 right-0 top-full z-20 mt-2 overflow-hidden rounded-xl border border-border bg-white shadow-xl">
+                          {dropoffSuggestions.map((suggestion) => (
+                            <button
+                              key={suggestion.placeId}
+                              type="button"
+                              className="flex w-full flex-col items-start gap-0.5 border-b border-border/60 px-3 py-2 text-left text-sm last:border-b-0 hover:bg-orange-50"
+                              onMouseDown={(event) => {
+                                event.preventDefault();
+                                selectAddressSuggestion("dropoff", suggestion);
+                              }}
+                            >
+                              <span className="font-medium text-slate-900">
+                                {suggestion.mainText}
+                              </span>
+                              <span className="text-xs text-slate-500">
+                                {suggestion.secondaryText || suggestion.description}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
                       <FormMessage />
                     </FormItem>
                   )}

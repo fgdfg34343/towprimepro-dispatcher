@@ -185,6 +185,7 @@ export default function MapView({ selectedOrder, onAssignDriver, focusedDriverId
   const { isLoaded, loadError } = useJsApiLoader({
     id: "towtruck-dispatcher-map",
     googleMapsApiKey,
+    libraries: ["places"],
   });
 
   const [locations, setLocations] = useState<Map<string, DriverLocationEntry>>(new Map());

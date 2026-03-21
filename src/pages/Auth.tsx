@@ -7,6 +7,7 @@ import { Truck } from "lucide-react";
 import { signInWithEmailAndPassword } from "firebase/auth";
 import { auth } from "../firebaseConfig";
 import ThemeToggle from "@/components/ThemeToggle";
+import { canAccessDispatcher } from "@/lib/dispatcherAccess";
 
 const Auth = () => {
   const [email, setEmail] = useState("");
@@ -32,19 +33,10 @@ const Auth = () => {
       );
       const user = userCredential.user;
 
-      // Проверка ADMIN_UID только если он установлен
-      const adminUid = import.meta.env.VITE_ADMIN_UID;
-      if (adminUid && user.uid !== adminUid) {
+      if (!canAccessDispatcher(user)) {
         alert("❌ Доступ запрещён. Только диспетчер может войти в систему.");
         await auth.signOut();
         return;
-      }
-
-      // Если VITE_ADMIN_UID не установлен, показываем предупреждение в консоли
-      if (!adminUid) {
-        console.warn(
-          "⚠️ VITE_ADMIN_UID не установлен. Любой аутентифицированный пользователь может получить доступ к диспетчерской."
-        );
       }
 
       window.location.href = "/dashboard";

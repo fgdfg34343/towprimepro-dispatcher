@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { auth } from "../firebaseConfig";
 import { onAuthStateChanged, User } from "firebase/auth";
+import { canAccessDispatcher } from "@/lib/dispatcherAccess";
 
 type ProtectedRouteProps = {
   children: JSX.Element;
@@ -24,8 +25,8 @@ const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
     return <p>Загрузка...</p>;
   }
 
-  if (!user || user.uid !== import.meta.env.VITE_ADMIN_UID) {
-    return <Navigate to="/" replace />;
+  if (!canAccessDispatcher(user)) {
+    return <Navigate to="/auth" replace />;
   }
 
   return children;

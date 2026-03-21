@@ -246,8 +246,9 @@ const Dashboard = () => {
   const handleOpenDriverChat = async (driverId: string) => {
     try {
       const driver = driverDirectory.drivers.find((d) => d.id === driverId);
+      const resolvedDriverId = driver?.authUid?.trim() || driverId;
       const chatId = await ensureSupportChatForDriver({
-        driverId,
+        driverId: resolvedDriverId,
         driverName: driver?.fullName || "Водитель",
         driverPhone: driver?.phoneNumber || "",
         vehicleType: driver?.vehicleType ?? null,

@@ -12,6 +12,7 @@ import {
 
 export interface DriverDirectoryEntry {
   id: string;
+  authUid: string | null;
   firstName: string;
   lastName: string;
   fullName: string;
@@ -482,6 +483,17 @@ export function useDriverDirectory(): DriverDirectoryResult {
         status = "offline";
       }
 
+      const authUid =
+        typeof profile.uid === "string"
+          ? profile.uid.trim()
+          : typeof profile.userId === "string"
+            ? profile.userId.trim()
+            : typeof profile.authUid === "string"
+              ? profile.authUid.trim()
+              : typeof profile.driverUid === "string"
+                ? profile.driverUid.trim()
+                : id;
+
       if (import.meta.env.DEV) {
         console.debug("[drivers:snapshot]", id, {
           profile,
@@ -498,6 +510,7 @@ export function useDriverDirectory(): DriverDirectoryResult {
 
       entries.push({
         id,
+        authUid: authUid.length > 0 ? authUid : null,
         firstName,
         lastName,
         fullName: fullNameFromProfile || `Водитель ${id}`,
