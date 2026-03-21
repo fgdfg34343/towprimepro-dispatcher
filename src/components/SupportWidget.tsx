@@ -57,7 +57,9 @@ const SupportWidget = ({ chats, loading, unreadCount = 0, onSelectChat, onOpenIn
           <h3 className="font-semibold">Поддержка</h3>
         </div>
         {unreadCount > 0 && (
-          <Badge className="bg-primary text-primary-foreground">{unreadCount}</Badge>
+          <Badge className="bg-amber-500 text-white shadow-sm">
+            Новые {unreadCount > 99 ? "99+" : unreadCount}
+          </Badge>
         )}
       </div>
 
@@ -89,18 +91,35 @@ const SupportWidget = ({ chats, loading, unreadCount = 0, onSelectChat, onOpenIn
             <button
               key={chat.id}
               type="button"
-              className="group w-full rounded-lg bg-background p-3 text-left transition-colors hover:bg-background-elevated"
+              className={`group relative w-full overflow-hidden rounded-lg p-3 text-left transition-all ${
+                chat.unreadByDispatcher > 0
+                  ? "border border-amber-400/70 bg-amber-50/90 shadow-[0_10px_28px_-24px_rgba(245,158,11,0.65)] hover:border-amber-500 hover:bg-amber-50 dark:bg-amber-500/10"
+                  : "bg-background hover:bg-background-elevated"
+              }`}
               onClick={() => onSelectChat(chat.id)}
             >
+              {chat.unreadByDispatcher > 0 && (
+                <span className="absolute left-0 top-0 h-full w-1 bg-amber-500 shadow-[0_0_14px_rgba(245,158,11,0.65)]" />
+              )}
               <div className="mb-1 flex items-start justify-between">
-                <span className="text-sm font-medium text-foreground">{chat.driverName}</span>
-                <span className="text-xs text-muted-foreground">
+                <span className="text-sm font-medium text-foreground">
+                  {chat.driverName}
+                </span>
+                <span className={`text-xs ${chat.unreadByDispatcher > 0 ? "text-amber-700 dark:text-amber-300 font-medium" : "text-muted-foreground"}`}>
                   {formatRelativeTime(chat.lastMessageTime)}
                 </span>
               </div>
-              <p className="line-clamp-2 text-sm text-muted-foreground">
+              <p className={`line-clamp-2 text-sm ${chat.unreadByDispatcher > 0 ? "font-medium text-foreground" : "text-muted-foreground"}`}>
                 {chat.lastMessage?.trim().length ? chat.lastMessage : "Сообщение без текста"}
               </p>
+              {chat.unreadByDispatcher > 0 && (
+                <div className="mt-2 flex items-center gap-2">
+                  <Badge className="bg-amber-500 text-white shadow-sm">Новое</Badge>
+                  <span className="text-xs font-medium text-amber-700 dark:text-amber-300">
+                    Сообщение от водителя требует внимания
+                  </span>
+                </div>
+              )}
             </button>
           ))
         )}

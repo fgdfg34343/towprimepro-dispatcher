@@ -550,10 +550,11 @@ const Dashboard = () => {
         <header className="border-b border-border bg-card sticky top-0 z-50">
           <div className="px-6 h-16 flex items-center justify-between">
             <div className="flex items-center gap-8">
-              <Link
-                to="/"
-                className="flex items-center gap-2 rounded-xl px-2 py-1 transition-colors hover:bg-background-elevated"
-                aria-label="Перейти на главный экран"
+              <button
+                type="button"
+                onClick={() => setActiveTab("orders")}
+                className="flex items-center gap-2 rounded-xl px-2 py-1 text-left transition-colors hover:bg-background-elevated"
+                aria-label="Открыть страницу заявок"
               >
                 <div className="w-10 h-10 bg-primary rounded-xl flex items-center justify-center">
                   <MapPin className="w-5 h-5 text-primary-foreground" />
@@ -561,7 +562,7 @@ const Dashboard = () => {
                 <span className="font-bold text-lg text-foreground">
                   TowPrime<span className="text-primary">PRO</span>
                 </span>
-              </Link>
+              </button>
 
               <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as NavTab)}>
                 <TabsList className="bg-background-elevated">

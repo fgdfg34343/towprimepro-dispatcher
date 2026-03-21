@@ -87,27 +87,32 @@ const SupportChatsList = ({
             driver?.phoneNumber?.trim().length
               ? driver.phoneNumber
               : chat.driverPhone;
+          const isUnread = chat.unreadByDispatcher > 0;
 
           return (
             <div
               key={chat.id}
               onClick={() => onSelectChat(chat.id)}
               className={`
-                p-4 rounded-xl cursor-pointer transition-all shadow-sm
+                relative overflow-hidden p-4 rounded-xl cursor-pointer transition-all shadow-sm
                 ${selectedChatId === chat.id
-                  ? "border border-primary/60 bg-primary/8 shadow-[0_8px_24px_-18px_hsl(var(--primary))]"
-                  : chat.unreadByDispatcher > 0
-                    ? "border border-primary/50 bg-primary/10 hover:bg-primary/14"
+                  ? "border border-primary/70 bg-primary/10 shadow-[0_10px_28px_-18px_hsl(var(--primary))] ring-1 ring-primary/20"
+                  : isUnread
+                    ? "border border-amber-400/70 bg-amber-50/90 shadow-[0_10px_28px_-24px_rgba(245,158,11,0.65)] hover:border-amber-500 hover:bg-amber-50 dark:bg-amber-500/10"
                     : "border border-border bg-background-elevated hover:border-primary/35 hover:bg-card"
                 }
               `}
             >
+              {isUnread && (
+                <div className="absolute left-0 top-0 h-full w-1 bg-amber-500 shadow-[0_0_14px_rgba(245,158,11,0.65)]" />
+              )}
+
               <div className="flex items-start justify-between mb-2">
                 <div className="flex-1 min-w-0 flex items-center gap-2">
-                  {chat.unreadByDispatcher > 0 && (
+                  {isUnread && (
                     <span className="relative flex h-2.5 w-2.5 shrink-0">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500"></span>
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-500 opacity-75" />
+                      <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500" />
                     </span>
                   )}
                   <div className="min-w-0">
@@ -119,19 +124,19 @@ const SupportChatsList = ({
                     </p>
                   </div>
                 </div>
-                {chat.unreadByDispatcher > 0 && (
-                  <Badge className="ml-2 bg-destructive text-white">
-                    {chat.unreadByDispatcher}
+                {isUnread && (
+                  <Badge className="ml-2 bg-amber-500 text-white shadow-sm">
+                    Новое {chat.unreadByDispatcher > 1 ? `· ${chat.unreadByDispatcher}` : ""}
                   </Badge>
                 )}
               </div>
 
-              <p className="text-sm text-muted-foreground line-clamp-2 mb-2">
+              <p className={`text-sm line-clamp-2 mb-2 ${isUnread ? "font-medium text-foreground" : "text-muted-foreground"}`}>
                 {chat.lastMessageFrom === "driver" ? "💬 " : "✉️ "}
                 {chat.lastMessage}
               </p>
 
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <div className={`flex items-center gap-2 text-xs ${isUnread ? "text-amber-700 dark:text-amber-300" : "text-muted-foreground"}`}>
                 <Clock className="w-3 h-3" />
                 <span>{formatTime(chat.lastMessageTime)}</span>
               </div>
@@ -144,7 +149,6 @@ const SupportChatsList = ({
 };
 
 export default SupportChatsList;
-
 
 
 
