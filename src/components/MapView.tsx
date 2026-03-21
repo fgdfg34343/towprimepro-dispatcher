@@ -179,6 +179,8 @@ function buildMarkerIcon(availability: DriverAvailability): google.maps.Icon | u
 export default function MapView({ selectedOrder, onAssignDriver, focusedDriverId }: MapViewProps) {
   const { resolvedTheme } = useTheme();
   const googleMapsApiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY?.trim() ?? "";
+  const currentOrigin =
+    typeof window !== "undefined" ? window.location.origin : "http://localhost:8080";
   const [mapAuthFailed, setMapAuthFailed] = useState(false);
   const { isLoaded, loadError } = useJsApiLoader({
     id: "towtruck-dispatcher-map",
@@ -425,10 +427,10 @@ export default function MapView({ selectedOrder, onAssignDriver, focusedDriverId
           </div>
           <h2 className="mt-4 text-lg font-semibold">Карта недоступна</h2>
           <p className="mt-2 text-sm text-muted-foreground">
-            Google Maps отклонил ключ или карта не настроена для домена `localhost`.
+            Google Maps отклонил ключ или карта не настроена для домена `{currentOrigin}`.
           </p>
           <p className="mt-3 text-xs text-muted-foreground">
-            Проверьте `VITE_GOOGLE_MAPS_API_KEY`, включён ли Maps JavaScript API, биллинг и разрешён ли referrer для `http://localhost:*`.
+            Проверьте `VITE_GOOGLE_MAPS_API_KEY`, включён ли Maps JavaScript API, биллинг и разрешён ли referrer для `{currentOrigin}/*`.
           </p>
         </div>
       </div>
