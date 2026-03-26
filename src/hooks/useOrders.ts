@@ -32,6 +32,7 @@ export interface OrderRecord {
   driverPhone: string | null;
   vehicleType: string | null;
   notes: string | null;
+  cancelComment: string | null;
   paymentMethod: string;
   paymentStatus: string;
   price: number;
@@ -184,6 +185,7 @@ const candidateFieldLists: Record<string, string[]> = {
   status: ["status", "state", "stage"],
   priority: ["priority", "isPriority", "urgent", "isUrgent", "highPriority", "isHighPriority"],
   notes: ["notes", "comment", "description", "details", "remark"],
+  cancelComment: ["cancelComment", "cancel_comment", "cancellationReason", "cancelReason"],
   driverId: ["driverId", "driver_id", "assignedDriverId", "assigned_driver_id", "assignedDriver.id", "driver.id", "driver.uid"],
   driverName: ["driverName", "driver_name", "assignedDriverName", "assigned_driver_name", "driver.fullName", "driver.name", "assignedDriver.fullName"],
   driverPhone: ["driverPhone", "driver_phone", "assignedDriverPhone", "driver.phone", "driver.contact.phone", "assignedDriver.phone"],
@@ -491,6 +493,7 @@ function normalizeOrder(docData: DocumentData, id: string): OrderRecord {
   const driverPhone = extractOptionalString(data, "driverPhone");
   const vehicleType = extractOptionalString(data, "vehicleType");
   const notes = extractOptionalString(data, "notes");
+  const cancelComment = extractOptionalString(data, "cancelComment");
   const assignedAutomatically = extractOptionalBoolean(data, "assignedAutomatically");
   const createdAt = extractDate(data, "createdAt");
   const completedAt = extractDate(data, "completedAt");
@@ -546,6 +549,7 @@ function normalizeOrder(docData: DocumentData, id: string): OrderRecord {
     driverPhone: driverPhone ?? null,
     vehicleType: vehicleType ?? null,
     notes: notes ?? null,
+    cancelComment: cancelComment ?? null,
     paymentMethod: extractString(data, "paymentMethod" as any, "cash"), // Default to cash if missing
     paymentStatus: extractString(data, "paymentStatus" as any, "pending"),
     price: extractNumber(data, "price" as any, 0),

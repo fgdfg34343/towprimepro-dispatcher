@@ -374,55 +374,57 @@ const OrdersList = ({
                         <span className="text-xs text-muted-foreground">{order.driverPhone}</span>
                       )}
                     </div>
-                    <Select
-                      value={order.driverId ?? ""}
-                      onValueChange={(value) => handleAssignDriver(order, value)}
-                      disabled={assigningOrderId === order.id || drivers.length === 0 || !!order.driverId}
-                    >
-                      <SelectTrigger
-                        onClick={(event) => event.stopPropagation()}
-                        onPointerDown={(event) => event.stopPropagation()}
-                        className="text-xs"
+                    {order.status !== "cancelled" && order.status !== "completed" && (
+                      <Select
+                        value={order.driverId ?? ""}
+                        onValueChange={(value) => handleAssignDriver(order, value)}
+                        disabled={assigningOrderId === order.id || drivers.length === 0 || !!order.driverId}
                       >
-                        <SelectValue
-                          placeholder={
-                            drivers.length === 0
-                              ? "Нет водителей"
-                              : order.driverId
-                                ? "Сменить водителя (недоступно)"
-                                : "Назначить водителя"
-                          }
-                        />
-                      </SelectTrigger>
-                      <SelectContent onClick={(event) => event.stopPropagation()}>
-                        {drivers.length === 0 ? (
-                          <div className="px-3 py-2 text-sm text-muted-foreground">
-                            Нет доступных водителей
-                          </div>
-                        ) : (
-                          <>
-                            {order.driverId && !drivers.some((driver) => driver.id === order.driverId) && (
-                              <SelectItem value={order.driverId}>
-                                {order.driverName || `Водитель ${order.driverId}`}
-                              </SelectItem>
-                            )}
-                            {drivers.map((driver) => {
-                              const fallbackName = [driver.firstName, driver.lastName]
-                                .filter(Boolean)
-                                .join(" ")
-                                .trim();
-                              const label = (driver.fullName || fallbackName || "Без имени").trim();
-
-                              return (
-                                <SelectItem key={driver.id} value={driver.id}>
-                                  {label}
+                        <SelectTrigger
+                          onClick={(event) => event.stopPropagation()}
+                          onPointerDown={(event) => event.stopPropagation()}
+                          className="text-xs"
+                        >
+                          <SelectValue
+                            placeholder={
+                              drivers.length === 0
+                                ? "Нет водителей"
+                                : order.driverId
+                                  ? "Сменить водителя (недоступно)"
+                                  : "Назначить водителя"
+                            }
+                          />
+                        </SelectTrigger>
+                        <SelectContent onClick={(event) => event.stopPropagation()}>
+                          {drivers.length === 0 ? (
+                            <div className="px-3 py-2 text-sm text-muted-foreground">
+                              Нет доступных водителей
+                            </div>
+                          ) : (
+                            <>
+                              {order.driverId && !drivers.some((driver) => driver.id === order.driverId) && (
+                                <SelectItem value={order.driverId}>
+                                  {order.driverName || `Водитель ${order.driverId}`}
                                 </SelectItem>
-                              );
-                            })}
-                          </>
-                        )}
-                      </SelectContent>
-                    </Select>
+                              )}
+                              {drivers.map((driver) => {
+                                const fallbackName = [driver.firstName, driver.lastName]
+                                  .filter(Boolean)
+                                  .join(" ")
+                                  .trim();
+                                const label = (driver.fullName || fallbackName || "Без имени").trim();
+
+                                return (
+                                  <SelectItem key={driver.id} value={driver.id}>
+                                    {label}
+                                  </SelectItem>
+                                );
+                              })}
+                            </>
+                          )}
+                        </SelectContent>
+                      </Select>
+                    )}
                   </div>
                 </div>
               </div>

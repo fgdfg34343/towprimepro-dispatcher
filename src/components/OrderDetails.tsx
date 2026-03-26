@@ -249,6 +249,16 @@ const OrderDetails = ({ order, onClose, onCancelOrder }: OrderDetailsProps) => {
         </div>
       )}
 
+      {order.status === "cancelled" && order.cancelComment && (
+        <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-4 space-y-2">
+          <div className="flex items-center gap-2 text-sm font-semibold text-destructive">
+            <XCircle className="w-4 h-4" />
+            <span>Причина отмены диспетчером</span>
+          </div>
+          <p className="text-sm text-foreground leading-relaxed">{order.cancelComment}</p>
+        </div>
+      )}
+
       {/* Кнопка завершения заявки */}
       {canCancel && (
         <Button

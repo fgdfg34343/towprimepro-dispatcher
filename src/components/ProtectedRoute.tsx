@@ -11,21 +11,28 @@ type ProtectedRouteProps = {
 const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [allowed, setAllowed] = useState<boolean | null>(null);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       setUser(firebaseUser);
+      if (firebaseUser) {
+        const access = await canAccessDispatcher(firebaseUser);
+        setAllowed(access);
+      } else {
+        setAllowed(false);
+      }
       setLoading(false);
     });
 
     return unsubscribe;
   }, []);
 
-  if (loading) {
+  if (loading || allowed === null) {
     return <p>Загрузка...</p>;
   }
 
-  if (!canAccessDispatcher(user)) {
+  if (!allowed) {
     return <Navigate to="/auth" replace />;
   }
 

@@ -12,6 +12,19 @@ import {
 } from "@/components/ui/dialog";
 import { AlertTriangle, Lock, MessageSquare } from "lucide-react";
 import { toast } from "sonner";
+import { EmailAuthProvider, reauthenticateWithCredential } from "firebase/auth";
+import { auth } from "../firebaseConfig";
+
+function normalizePassword(value: string) {
+  const trimmed = value.trim();
+  if (
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+  ) {
+    return trimmed.slice(1, -1).trim();
+  }
+  return trimmed;
+}
 
 interface CancelOrderDialogProps {
   open: boolean;
@@ -19,27 +32,6 @@ interface CancelOrderDialogProps {
   orderCode: string;
   onConfirm: (comment: string) => Promise<void>;
 }
-
-function normalizePassword(value: string | undefined) {
-  if (!value) {
-    return "";
-  }
-
-  const trimmed = value.trim();
-
-  if (
-    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
-    (trimmed.startsWith("'") && trimmed.endsWith("'"))
-  ) {
-    return trimmed.slice(1, -1).trim();
-  }
-
-  return trimmed;
-}
-
-const CANCEL_PASSWORD = normalizePassword(
-  import.meta.env.VITE_DISPATCHER_CANCEL_PASSWORD || "dispatch123",
-);
 
 const CancelOrderDialog = ({
   open,
@@ -73,21 +65,24 @@ const CancelOrderDialog = ({
       return;
     }
 
-    if (normalizedPassword !== CANCEL_PASSWORD) {
-      setPasswordError(true);
-      toast.error("Неверный пароль диспетчера");
-      return;
-    }
-
     setPasswordError(false);
     setSubmitting(true);
     try {
+      const user = auth.currentUser;
+      if (!user || !user.email) throw new Error("Не авторизован");
+      const credential = EmailAuthProvider.credential(user.email, normalizedPassword);
+      await reauthenticateWithCredential(user, credential);
       await onConfirm(comment.trim());
       toast.success("Заявка завершена диспетчером");
       handleClose();
-    } catch (error) {
-      console.error("Ошибка завершения заявки:", error);
-      toast.error("Не удалось завершить заявку");
+    } catch (error: any) {
+      if (error?.code === "auth/invalid-credential" || error?.code === "auth/wrong-password") {
+        setPasswordError(true);
+        toast.error("Неверный пароль диспетчера");
+      } else {
+        console.error("Ошибка завершения заявки:", error);
+        toast.error("Не удалось завершить заявку");
+      }
     } finally {
       setSubmitting(false);
     }

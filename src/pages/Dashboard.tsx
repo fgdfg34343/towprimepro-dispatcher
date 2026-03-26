@@ -750,6 +750,7 @@ const Dashboard = () => {
                 selectedOrder={selectedOrder}
                 onAssignDriver={ordersState.assignDriver}
                 focusedDriverId={focusedDriverId}
+                orders={ordersState.orders}
               />
             )}
           </main>

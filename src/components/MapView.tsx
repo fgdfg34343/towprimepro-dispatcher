@@ -61,10 +61,19 @@ interface DriverMarker extends DriverLocationEntry {
   vehicleType: string | null;
 }
 
+interface OrderMarker {
+  orderId: string;
+  orderCode: string;
+  lat: number;
+  lng: number;
+  type: "pickup" | "dropoff";
+}
+
 interface MapViewProps {
   selectedOrder: OrderRecord | null;
   onAssignDriver: (payload: AssignDriverPayload) => Promise<void>;
   focusedDriverId?: string | null;
+  orders?: OrderRecord[];
 }
 
 declare global {
@@ -176,7 +185,7 @@ function buildMarkerIcon(availability: DriverAvailability): google.maps.Icon | u
   } as google.maps.Icon;
 }
 
-export default function MapView({ selectedOrder, onAssignDriver, focusedDriverId }: MapViewProps) {
+export default function MapView({ selectedOrder, onAssignDriver, focusedDriverId, orders = [] }: MapViewProps) {
   const { resolvedTheme } = useTheme();
   const googleMapsApiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY?.trim() ?? "";
   const currentOrigin =
@@ -192,6 +201,9 @@ export default function MapView({ selectedOrder, onAssignDriver, focusedDriverId
   const [profiles, setProfiles] = useState<Map<string, DriverProfileEntry>>(new Map());
   const [activeDriverId, setActiveDriverId] = useState<string | null>(null);
   const [assigningDriverId, setAssigningDriverId] = useState<string | null>(null);
+  const [orderMarkers, setOrderMarkers] = useState<OrderMarker[]>([]);
+  const [activeOrderMarkerId, setActiveOrderMarkerId] = useState<string | null>(null);
+  const geocodedCache = useRef<Map<string, { lat: number; lng: number }>>(new Map());
   const mapRef = useRef<google.maps.Map | null>(null);
   const mapStyles = useMemo<google.maps.MapTypeStyle[] | undefined>(() => {
     if (resolvedTheme !== "dark") {
@@ -394,6 +406,54 @@ export default function MapView({ selectedOrder, onAssignDriver, focusedDriverId
     }
   }, [focusedDriverId, drivers]);
 
+  // Geocode pickup/dropoff for new unassigned orders
+  useEffect(() => {
+    if (!isLoaded || !window.google?.maps) return;
+
+    const newOrders = orders.filter((o) => o.status === "new" && !o.driverId);
+    const newOrderIds = new Set(newOrders.map((o) => o.id));
+
+    setOrderMarkers((prev) => prev.filter((m) => newOrderIds.has(m.orderId)));
+
+    if (newOrders.length === 0) return;
+
+    const geocoder = new window.google.maps.Geocoder();
+
+    const geocodeAddress = (address: string, cb: (lat: number, lng: number) => void) => {
+      if (geocodedCache.current.has(address)) {
+        const cached = geocodedCache.current.get(address)!;
+        cb(cached.lat, cached.lng);
+        return;
+      }
+      geocoder.geocode({ address }, (results, status) => {
+        console.log("[MapView] geocode", address, status, results?.[0]);
+        if (status === "OK" && results?.[0]) {
+          const loc = results[0].geometry.location;
+          const coords = { lat: loc.lat(), lng: loc.lng() };
+          geocodedCache.current.set(address, coords);
+          cb(coords.lat, coords.lng);
+        } else {
+          console.warn("[MapView] geocode failed:", address, status);
+        }
+      });
+    };
+
+    newOrders.forEach((order) => {
+      geocodeAddress(order.pickupAddress, (lat, lng) => {
+        setOrderMarkers((prev) => [
+          ...prev.filter((m) => !(m.orderId === order.id && m.type === "pickup")),
+          { orderId: order.id, orderCode: order.code, lat, lng, type: "pickup" },
+        ]);
+      });
+      geocodeAddress(order.dropoffAddress, (lat, lng) => {
+        setOrderMarkers((prev) => [
+          ...prev.filter((m) => !(m.orderId === order.id && m.type === "dropoff")),
+          { orderId: order.id, orderCode: order.code, lat, lng, type: "dropoff" },
+        ]);
+      });
+    });
+  }, [orders, isLoaded]);
+
   const handleAssignDriver = useCallback(
     async (driver: DriverMarker) => {
       if (!selectedOrder) {
@@ -457,6 +517,47 @@ export default function MapView({ selectedOrder, onAssignDriver, focusedDriverId
         styles: mapStyles,
       }}
     >
+      {/* Маркеры точек подачи и назначения для новых заявок */}
+      {orderMarkers.map((marker) => {
+        const markerId = `${marker.orderId}-${marker.type}`;
+        const isPickup = marker.type === "pickup";
+        const order = orders.find((o) => o.id === marker.orderId);
+        const color = isPickup ? "%23ef4444" : "%2322c55e";
+        const svgIcon = `data:image/svg+xml;utf-8,<svg xmlns='http://www.w3.org/2000/svg' width='40' height='50' viewBox='0 0 40 50'><path d='M20 0C9 0 0 9 0 20c0 15 20 30 20 30S40 35 40 20C40 9 31 0 20 0z' fill='${color}' stroke='white' stroke-width='2'/><circle cx='20' cy='20' r='9' fill='white'/></svg>`;
+        return (
+          <Marker
+            key={markerId}
+            position={{ lat: marker.lat, lng: marker.lng }}
+            label={{
+              text: isPickup ? "A" : "B",
+              color: isPickup ? "#ef4444" : "#22c55e",
+              fontWeight: "bold",
+              fontSize: "13px",
+            }}
+            icon={{
+              url: svgIcon,
+              scaledSize: new window.google.maps.Size(40, 50),
+              labelOrigin: new window.google.maps.Point(20, 20),
+            }}
+            onClick={() => setActiveOrderMarkerId(activeOrderMarkerId === markerId ? null : markerId)}
+          >
+            {activeOrderMarkerId === markerId && (
+              <InfoWindow onCloseClick={() => setActiveOrderMarkerId(null)}>
+                <div style={{ fontSize: "13px", minWidth: "180px" }}>
+                  <p style={{ fontWeight: "bold", marginBottom: "4px" }}>
+                    {isPickup ? "📍 Откуда" : "🏁 Куда"}
+                  </p>
+                  <p style={{ color: "#555", fontSize: "11px", marginBottom: "4px" }}>
+                    Заявка {marker.orderCode}
+                  </p>
+                  <p>{isPickup ? order?.pickupAddress : order?.dropoffAddress}</p>
+                </div>
+              </InfoWindow>
+            )}
+          </Marker>
+        );
+      })}
+
       {drivers.map((driver) => {
         const icon = buildMarkerIcon(driver.availability);
 
