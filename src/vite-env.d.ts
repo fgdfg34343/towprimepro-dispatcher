@@ -11,6 +11,7 @@ interface ImportMetaEnv {
   readonly VITE_GOOGLE_MAPS_API_KEY: string;
   readonly VITE_ADMIN_UID?: string;
   readonly VITE_ADMIN_EMAIL?: string;
+  readonly VITE_DISPATCHER_CANCEL_PASSWORD?: string;
 }
 
 interface ImportMeta {

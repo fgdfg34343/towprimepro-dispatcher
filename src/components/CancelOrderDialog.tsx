@@ -20,7 +20,26 @@ interface CancelOrderDialogProps {
   onConfirm: (comment: string) => Promise<void>;
 }
 
-const CANCEL_PASSWORD = import.meta.env.VITE_DISPATCHER_CANCEL_PASSWORD || "dispatch123";
+function normalizePassword(value: string | undefined) {
+  if (!value) {
+    return "";
+  }
+
+  const trimmed = value.trim();
+
+  if (
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+  ) {
+    return trimmed.slice(1, -1).trim();
+  }
+
+  return trimmed;
+}
+
+const CANCEL_PASSWORD = normalizePassword(
+  import.meta.env.VITE_DISPATCHER_CANCEL_PASSWORD || "dispatch123",
+);
 
 const CancelOrderDialog = ({
   open,
@@ -42,17 +61,19 @@ const CancelOrderDialog = ({
   };
 
   const handleConfirm = async () => {
+    const normalizedPassword = normalizePassword(password);
+
     if (!comment.trim()) {
       toast.error("Укажите причину завершения заявки");
       return;
     }
 
-    if (!password) {
+    if (!normalizedPassword) {
       toast.error("Введите пароль диспетчера");
       return;
     }
 
-    if (password !== CANCEL_PASSWORD) {
+    if (normalizedPassword !== CANCEL_PASSWORD) {
       setPasswordError(true);
       toast.error("Неверный пароль диспетчера");
       return;
