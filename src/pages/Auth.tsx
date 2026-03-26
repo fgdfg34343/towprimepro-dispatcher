@@ -3,17 +3,19 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
-import { Truck } from "lucide-react";
+import { Truck, Eye, EyeOff } from "lucide-react";
 import { signInWithEmailAndPassword } from "firebase/auth";
 import { auth } from "../firebaseConfig";
 import ThemeToggle from "@/components/ThemeToggle";
 import { canAccessDispatcher } from "@/lib/dispatcherAccess";
+import { Link } from "react-router-dom";
 
 const Auth = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -81,15 +83,25 @@ const Auth = () => {
 
           <div className="space-y-2">
             <Label htmlFor="password">Пароль</Label>
-            <Input
-              id="password"
-              type="password"
-              placeholder="••••••••"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="bg-background-elevated border-border"
-              disabled={isSubmitting}
-            />
+            <div className="relative">
+              <Input
+                id="password"
+                type={showPassword ? "text" : "password"}
+                placeholder="••••••••"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="bg-background-elevated border-border pr-10"
+                disabled={isSubmitting}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                tabIndex={-1}
+              >
+                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
           </div>
 
           {error && (
@@ -99,6 +111,13 @@ const Auth = () => {
           <Button type="submit" className="w-full" disabled={isSubmitting}>
             {isSubmitting ? "Входим..." : "Войти"}
           </Button>
+
+          <p className="text-center text-sm text-muted-foreground">
+            Нет аккаунта?{" "}
+            <Link to="/register" className="text-primary hover:underline">
+              Зарегистрироваться
+            </Link>
+          </p>
         </form>
       </Card>
     </div>

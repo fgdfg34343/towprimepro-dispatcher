@@ -9,6 +9,7 @@ interface SupportWidgetProps {
   chats: SupportChat[];
   loading: boolean;
   unreadCount?: number;
+  highlightedChatIds?: string[];
   onSelectChat: (chatId: string) => void;
   onOpenInbox: () => void;
 }
@@ -44,10 +45,32 @@ function formatRelativeTime(date: Date | null): string {
   });
 }
 
-const SupportWidget = ({ chats, loading, unreadCount = 0, onSelectChat, onOpenInbox }: SupportWidgetProps) => {
+const SupportWidget = ({
+  chats,
+  loading,
+  unreadCount = 0,
+  highlightedChatIds = [],
+  onSelectChat,
+  onOpenInbox,
+}: SupportWidgetProps) => {
   const topChats = useMemo(() => {
-    return chats.slice(0, 3);
-  }, [chats]);
+    const highlightedIds = new Set(highlightedChatIds);
+
+    return [...chats]
+      .sort((a, b) => {
+        const aUnread = a.unreadByDispatcher > 0 || highlightedIds.has(a.id) ? 1 : 0;
+        const bUnread = b.unreadByDispatcher > 0 || highlightedIds.has(b.id) ? 1 : 0;
+
+        if (aUnread !== bUnread) {
+          return bUnread - aUnread;
+        }
+
+        const aTime = a.lastMessageTime?.getTime() ?? 0;
+        const bTime = b.lastMessageTime?.getTime() ?? 0;
+        return bTime - aTime;
+      })
+      .slice(0, 3);
+  }, [chats, highlightedChatIds]);
 
   return (
     <Card className="border-border p-4">
@@ -57,7 +80,7 @@ const SupportWidget = ({ chats, loading, unreadCount = 0, onSelectChat, onOpenIn
           <h3 className="font-semibold">Поддержка</h3>
         </div>
         {unreadCount > 0 && (
-          <Badge className="bg-amber-500 text-white shadow-sm">
+          <Badge className="bg-red-500 text-white shadow-sm">
             Новые {unreadCount > 99 ? "99+" : unreadCount}
           </Badge>
         )}
@@ -87,41 +110,48 @@ const SupportWidget = ({ chats, loading, unreadCount = 0, onSelectChat, onOpenIn
             Нет активных обращений
           </div>
         ) : (
-          topChats.map((chat) => (
-            <button
-              key={chat.id}
-              type="button"
-              className={`group relative w-full overflow-hidden rounded-lg p-3 text-left transition-all ${
-                chat.unreadByDispatcher > 0
-                  ? "border border-amber-400/70 bg-amber-50/90 shadow-[0_10px_28px_-24px_rgba(245,158,11,0.65)] hover:border-amber-500 hover:bg-amber-50 dark:bg-amber-500/10"
-                  : "bg-background hover:bg-background-elevated"
-              }`}
-              onClick={() => onSelectChat(chat.id)}
-            >
-              {chat.unreadByDispatcher > 0 && (
-                <span className="absolute left-0 top-0 h-full w-1 bg-amber-500 shadow-[0_0_14px_rgba(245,158,11,0.65)]" />
+          topChats.map((chat) => {
+            const isUnread = chat.unreadByDispatcher > 0 || highlightedChatIds.includes(chat.id);
+
+            return (
+              <button
+                key={chat.id}
+                type="button"
+                className={`group relative w-full overflow-hidden rounded-lg p-3 text-left transition-all ${
+                  isUnread
+                    ? "border border-red-500/80 bg-red-50/95 shadow-[0_10px_28px_-24px_rgba(239,68,68,0.65)] hover:border-red-500 hover:bg-red-50 dark:bg-red-500/10 ring-1 ring-red-400/25"
+                    : "bg-background hover:bg-background-elevated"
+                }`}
+                onClick={() => onSelectChat(chat.id)}
+              >
+                {isUnread && (
+                <>
+                  <span className="absolute left-0 top-0 h-full w-1 bg-red-500 shadow-[0_0_14px_rgba(239,68,68,0.75)]" />
+                  <span className="absolute left-2 top-2 h-2 w-2 rounded-full bg-red-500 animate-ping opacity-80" />
+                </>
               )}
               <div className="mb-1 flex items-start justify-between">
-                <span className="text-sm font-medium text-foreground">
+                <span className={`text-sm font-semibold ${isUnread ? "text-red-900 dark:text-red-100" : "text-foreground"}`}>
                   {chat.driverName}
                 </span>
-                <span className={`text-xs ${chat.unreadByDispatcher > 0 ? "text-amber-700 dark:text-amber-300 font-medium" : "text-muted-foreground"}`}>
+                <span className={`text-xs ${isUnread ? "text-red-700 dark:text-red-300 font-medium" : "text-muted-foreground"}`}>
                   {formatRelativeTime(chat.lastMessageTime)}
                 </span>
               </div>
-              <p className={`line-clamp-2 text-sm ${chat.unreadByDispatcher > 0 ? "font-medium text-foreground" : "text-muted-foreground"}`}>
+              <p className={`line-clamp-2 text-sm ${isUnread ? "font-medium text-red-900 dark:text-red-100" : "text-muted-foreground"}`}>
                 {chat.lastMessage?.trim().length ? chat.lastMessage : "Сообщение без текста"}
               </p>
-              {chat.unreadByDispatcher > 0 && (
+              {isUnread && (
                 <div className="mt-2 flex items-center gap-2">
-                  <Badge className="bg-amber-500 text-white shadow-sm">Новое</Badge>
-                  <span className="text-xs font-medium text-amber-700 dark:text-amber-300">
+                  <Badge className="bg-red-500 text-white shadow-sm">Новое</Badge>
+                  <span className="text-xs font-medium text-red-700 dark:text-red-300">
                     Сообщение от водителя требует внимания
                   </span>
                 </div>
               )}
-            </button>
-          ))
+              </button>
+            );
+          })
         )}
       </div>
 

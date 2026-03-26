@@ -90,18 +90,38 @@ const ClientSupportWidget = ({
             <button
               key={chat.id}
               type="button"
-              className="group w-full rounded-lg bg-background p-3 text-left transition-colors hover:bg-background-elevated"
+              className={`group relative w-full overflow-hidden rounded-lg p-3 text-left transition-all ${
+                chat.unreadByDispatcher > 0
+                  ? "border border-red-500/80 bg-red-50/95 shadow-[0_10px_28px_-24px_rgba(239,68,68,0.65)] hover:border-red-500 hover:bg-red-50 dark:bg-red-500/10 ring-1 ring-red-400/25"
+                  : "bg-background hover:bg-background-elevated"
+              }`}
               onClick={() => onSelectChat(chat.id)}
             >
+              {chat.unreadByDispatcher > 0 && (
+                <>
+                  <span className="absolute left-0 top-0 h-full w-1 bg-red-500 shadow-[0_0_14px_rgba(239,68,68,0.75)]" />
+                  <span className="absolute left-2 top-2 h-2 w-2 rounded-full bg-red-500 animate-ping opacity-80" />
+                </>
+              )}
               <div className="mb-1 flex items-start justify-between">
-                <span className="text-sm font-medium text-foreground">{chat.clientName}</span>
-                <span className="text-xs text-muted-foreground">
+                <span className={`text-sm font-semibold ${chat.unreadByDispatcher > 0 ? "text-red-900 dark:text-red-100" : "text-foreground"}`}>
+                  {chat.clientName}
+                </span>
+                <span className={`text-xs ${chat.unreadByDispatcher > 0 ? "text-red-700 dark:text-red-300 font-medium" : "text-muted-foreground"}`}>
                   {formatRelativeTime(chat.lastMessageTime)}
                 </span>
               </div>
-              <p className="line-clamp-2 text-sm text-muted-foreground">
+              <p className={`line-clamp-2 text-sm ${chat.unreadByDispatcher > 0 ? "font-medium text-red-900 dark:text-red-100" : "text-muted-foreground"}`}>
                 {chat.lastMessage?.trim().length ? chat.lastMessage : "Сообщение без текста"}
               </p>
+              {chat.unreadByDispatcher > 0 && (
+                <div className="mt-2 flex items-center gap-2">
+                  <Badge className="bg-red-500 text-white shadow-sm">Новое</Badge>
+                  <span className="text-xs font-medium text-red-700 dark:text-red-300">
+                    Сообщение не прочитано
+                  </span>
+                </div>
+              )}
             </button>
           ))
         )}

@@ -218,6 +218,8 @@ const Dashboard = () => {
     setUnreadSupportCount,
     unreadClientSupportCount,
     setUnreadClientSupportCount,
+    highlightedSupportChatIds,
+    clearSupportChatHighlight,
   } = useDispatcherNotifications({
     supportChats,
     supportChatsLoading,
@@ -242,6 +244,14 @@ const Dashboard = () => {
       setSelectedChatId(null);
     }
   }, [selectedChatId, supportChats]);
+
+  useEffect(() => {
+    if (!selectedChatId) {
+      return;
+    }
+
+    clearSupportChatHighlight(selectedChatId);
+  }, [clearSupportChatHighlight, selectedChatId]);
 
   const handleOpenDriverChat = async (driverId: string) => {
     try {
@@ -671,6 +681,7 @@ const Dashboard = () => {
                 loading={supportChatsLoading}
                 error={supportChatsError}
                 drivers={driverDirectory.drivers}
+                highlightedChatIds={highlightedSupportChatIds}
               />
             )}
 
@@ -767,13 +778,17 @@ const Dashboard = () => {
                     <SupportWidget
                       chats={supportChats}
                       loading={supportChatsLoading}
+                      highlightedChatIds={highlightedSupportChatIds}
                       onSelectChat={(chatId) => {
+                        clearSupportChatHighlight(chatId);
                         setQuickSupportChatId(chatId);
                       }}
                       onOpenInbox={() => {
                         setActiveTab("support");
                         if (supportChats.length > 0) {
-                          setSelectedChatId(supportChats[0]?.id ?? null);
+                          const firstChatId = supportChats[0]?.id ?? null;
+                          clearSupportChatHighlight(firstChatId);
+                          setSelectedChatId(firstChatId);
                         }
                       }}
                     />
@@ -843,13 +858,17 @@ const Dashboard = () => {
                     chats={supportChats}
                     loading={supportChatsLoading}
                     unreadCount={unreadSupportCount}
+                    highlightedChatIds={highlightedSupportChatIds}
                     onSelectChat={(chatId) => {
+                      clearSupportChatHighlight(chatId);
                       setQuickSupportChatId(chatId);
                     }}
                     onOpenInbox={() => {
                       setActiveTab("support");
                       if (supportChats.length > 0) {
-                        setSelectedChatId(supportChats[0]?.id ?? null);
+                        const firstChatId = supportChats[0]?.id ?? null;
+                        clearSupportChatHighlight(firstChatId);
+                        setSelectedChatId(firstChatId);
                       }
                     }}
                   />

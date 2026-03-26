@@ -110,6 +110,19 @@ export function useDispatcherNotifications({
     const saved = localStorage.getItem("unreadClientSupportCount");
     return saved ? parseInt(saved, 10) : 0;
   });
+  const [highlightedSupportChatIds, setHighlightedSupportChatIds] = useState<string[]>(() => {
+    const saved = localStorage.getItem("highlightedSupportChatIds");
+    if (!saved) return [];
+
+    try {
+      const parsed = JSON.parse(saved);
+      return Array.isArray(parsed)
+        ? parsed.filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+        : [];
+    } catch {
+      return [];
+    }
+  });
 
   useEffect(() => {
     localStorage.setItem("unreadSupportCount", unreadSupportCount.toString());
@@ -118,6 +131,10 @@ export function useDispatcherNotifications({
   useEffect(() => {
     localStorage.setItem("unreadClientSupportCount", unreadClientSupportCount.toString());
   }, [unreadClientSupportCount]);
+
+  useEffect(() => {
+    localStorage.setItem("highlightedSupportChatIds", JSON.stringify(highlightedSupportChatIds));
+  }, [highlightedSupportChatIds]);
 
   // Запрос разрешения
   useEffect(() => {
@@ -162,6 +179,12 @@ export function useDispatcherNotifications({
               const body = `${chat.driverName}: ${text}`;
               
               setUnreadSupportCount(prev => prev + 1);
+              setHighlightedSupportChatIds((prev) => {
+                if (prev.includes(chat.id)) {
+                  return prev;
+                }
+                return [chat.id, ...prev];
+              });
               
               playSound("message");
               showBrowserNotif(title, body);
@@ -289,5 +312,10 @@ export function useDispatcherNotifications({
     setUnreadSupportCount,
     unreadClientSupportCount,
     setUnreadClientSupportCount,
+    highlightedSupportChatIds,
+    clearSupportChatHighlight: (chatId: string | null) => {
+      if (!chatId) return;
+      setHighlightedSupportChatIds((prev) => prev.filter((id) => id !== chatId));
+    },
   };
 }
