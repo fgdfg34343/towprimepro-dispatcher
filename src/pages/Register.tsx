@@ -5,7 +5,8 @@ import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { Truck, Eye, EyeOff } from "lucide-react";
 import { createUserWithEmailAndPassword } from "firebase/auth";
-import { auth } from "../firebaseConfig";
+import { doc, setDoc, serverTimestamp } from "firebase/firestore";
+import { auth, db } from "../firebaseConfig";
 import ThemeToggle from "@/components/ThemeToggle";
 import { Link } from "react-router-dom";
 
@@ -40,7 +41,12 @@ const Register = () => {
 
     try {
       setIsSubmitting(true);
-      await createUserWithEmailAndPassword(auth, email, password);
+      const { user } = await createUserWithEmailAndPassword(auth, email, password);
+      await setDoc(doc(db, "dispatchers", user.uid), {
+        email: user.email,
+        createdAt: serverTimestamp(),
+        active: true,
+      });
       setSuccess(true);
     } catch (err: any) {
       if (err.code === "auth/email-already-in-use") {

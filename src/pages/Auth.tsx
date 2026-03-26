@@ -35,7 +35,7 @@ const Auth = () => {
       );
       const user = userCredential.user;
 
-      if (!canAccessDispatcher(user)) {
+      if (!await canAccessDispatcher(user)) {
         alert("❌ Доступ запрещён. Только диспетчер может войти в систему.");
         await auth.signOut();
         return;

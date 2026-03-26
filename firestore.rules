@@ -83,6 +83,12 @@ service cloud.firestore {
       }
     }
     
+    // Диспетчеры — пользователь может читать только свой документ
+    match /dispatchers/{dispatcherId} {
+      allow read: if request.auth != null && request.auth.uid == dispatcherId;
+      allow create: if request.auth != null && request.auth.uid == dispatcherId;
+    }
+
     // Настройки
     match /settings/{document=**} {
       allow read: if isAuthenticated();

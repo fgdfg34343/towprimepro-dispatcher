@@ -1,32 +1,17 @@
 import type { User } from "firebase/auth";
+import { doc, getDoc } from "firebase/firestore";
+import { db } from "../firebaseConfig";
 
-function normalizeValue(value?: string | null): string {
-  return value?.trim() ?? "";
-}
+export async function canAccessDispatcher(user: User | null): Promise<boolean> {
+  if (!user) return false;
 
-function normalizeEmail(value?: string | null): string {
-  return normalizeValue(value).toLowerCase();
-}
-
-export function canAccessDispatcher(user: User | null): boolean {
-  if (!user) {
+  try {
+    const snap = await getDoc(doc(db, "dispatchers", user.uid));
+    if (snap.exists()) {
+      return snap.data()?.active !== false;
+    }
+    return false;
+  } catch {
     return false;
   }
-
-  const adminUid = normalizeValue(import.meta.env.VITE_ADMIN_UID);
-  const adminEmail = normalizeEmail(import.meta.env.VITE_ADMIN_EMAIL);
-
-  if (!adminUid && !adminEmail) {
-    console.warn(
-      "⚠️ VITE_ADMIN_UID и VITE_ADMIN_EMAIL не установлены. Любой аутентифицированный пользователь может получить доступ к диспетчерской."
-    );
-    return true;
-  }
-
-  const uidMatches = adminUid ? normalizeValue(user.uid) === adminUid : false;
-  const emailMatches = adminEmail
-    ? normalizeEmail(user.email) === adminEmail
-    : false;
-
-  return uidMatches || emailMatches;
 }
