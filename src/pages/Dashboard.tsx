@@ -894,6 +894,8 @@ const Dashboard = () => {
                       drivers={driverDirectory.drivers}
                       loading={driverDirectory.loading}
                       error={driverDirectory.error}
+                      selectedDriverId={selectedDriverId}
+                      onSelectDriver={handleSelectDriver}
                     />
                   </>
                 )
@@ -974,6 +976,8 @@ const Dashboard = () => {
                     drivers={driverDirectory.drivers}
                     loading={driverDirectory.loading}
                     error={driverDirectory.error}
+                    selectedDriverId={selectedDriverId}
+                    onSelectDriver={handleSelectDriver}
                   />
                 </>
               )}

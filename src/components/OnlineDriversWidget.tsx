@@ -3,15 +3,41 @@ import { Car, Phone, Navigation } from "lucide-react";
 import type { DriverDirectoryEntry } from "@/hooks/useDriverDirectory";
 import { Card } from "@/components/ui/card";
 
+const STALE_THRESHOLD_MS = 60 * 60 * 1_000;
+
 interface OnlineDriversWidgetProps {
   drivers: DriverDirectoryEntry[];
   loading: boolean;
   error?: string | null;
+  selectedDriverId?: string | null;
+  onSelectDriver?: (driverId: string) => void;
 }
 
-const OnlineDriversWidget = ({ drivers, loading, error }: OnlineDriversWidgetProps) => {
+const OnlineDriversWidget = ({
+  drivers,
+  loading,
+  error,
+  selectedDriverId = null,
+  onSelectDriver,
+}: OnlineDriversWidgetProps) => {
   const onlineDrivers = useMemo(() => {
-    return drivers.filter((driver) => driver.status === "online");
+    return drivers
+      .filter((driver) => {
+        if (driver.status !== "online") {
+          return false;
+        }
+
+        if (driver.lat === null || driver.lng === null || driver.updatedAt === null) {
+          return false;
+        }
+
+        return Date.now() - driver.updatedAt.getTime() <= STALE_THRESHOLD_MS;
+      })
+      .sort((left, right) => {
+        const leftUpdatedAt = left.updatedAt?.getTime() ?? 0;
+        const rightUpdatedAt = right.updatedAt?.getTime() ?? 0;
+        return rightUpdatedAt - leftUpdatedAt;
+      });
   }, [drivers]);
 
   return (
@@ -51,11 +77,20 @@ const OnlineDriversWidget = ({ drivers, loading, error }: OnlineDriversWidgetPro
               const name = driver.fullName?.trim().length
                 ? driver.fullName.trim()
                 : [driver.firstName, driver.lastName].filter(Boolean).join(" ").trim() || `Водитель ${driver.id}`;
+              const isSelected = selectedDriverId === driver.id;
 
               return (
-                <div
+                <button
                   key={driver.id}
-                  className="rounded-lg border border-border bg-background px-3 py-2 text-sm transition-colors hover:border-primary/50"
+                  type="button"
+                  onClick={() => onSelectDriver?.(driver.id)}
+                  className={[
+                    "w-full rounded-lg border bg-background px-3 py-2 text-left text-sm transition-colors",
+                    "hover:border-primary/50 hover:bg-accent/30",
+                    isSelected
+                      ? "border-primary bg-primary/10 shadow-[0_0_0_1px_hsl(var(--primary)/0.2)]"
+                      : "border-border",
+                  ].join(" ")}
                 >
                   <div className="flex items-center justify-between">
                     <span className="font-medium text-foreground">{name}</span>
@@ -75,7 +110,7 @@ const OnlineDriversWidget = ({ drivers, loading, error }: OnlineDriversWidgetPro
                       </span>
                     )}
                   </div>
-                </div>
+                </button>
               );
             })}
           </div>
