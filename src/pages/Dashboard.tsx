@@ -3,6 +3,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
   MapPin,
   Search,
   Plus,
@@ -12,7 +18,11 @@ import {
   Users,
   FileText,
   Wallet,
+  LogOut,
 } from "lucide-react";
+import { signOut, onAuthStateChanged, type User } from "firebase/auth";
+import { firebaseAuth } from "@/lib/firebase";
+import { useNavigate } from "react-router-dom";
 import { Link } from "react-router-dom";
 import OrdersList from "@/components/OrdersList";
 import SupportWidget from "@/components/SupportWidget";
@@ -154,6 +164,9 @@ function getOrderAttentionStatus(state: OrderAttentionState, orderId: string): O
 }
 
 const Dashboard = () => {
+  const navigate = useNavigate();
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<NavTab>("orders");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
@@ -168,6 +181,35 @@ const Dashboard = () => {
     () => loadStoredOrderAttentionState()
   );
   
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(firebaseAuth, (user) => {
+      setCurrentUser(user);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const handleLogout = async () => {
+    try {
+      await signOut(firebaseAuth);
+      navigate("/");
+    } catch (error) {
+      console.error("Ошибка выхода:", error);
+    }
+  };
+
+  const getUserInitials = (user: User | null) => {
+    if (!user) return "Д";
+    if (user.displayName) {
+      return user.displayName
+        .split(" ")
+        .map((n) => n[0])
+        .join("")
+        .toUpperCase()
+        .slice(0, 2);
+    }
+    return (user.email?.[0] ?? "Д").toUpperCase();
+  };
+
   const hasInitializedOrdersRef = useRef(false);
   const knownOrderStatusRef = useRef<Map<string, OrderStatus>>(new Map());
   const driverDirectory = useDriverDirectory();
@@ -638,6 +680,61 @@ const Dashboard = () => {
                   <div className="w-2 h-2 bg-status-completed rounded-full" />
                   <span className="text-sm">Диспетчер</span>
                 </Badge>
+
+                {/* Аватар диспетчера */}
+                <DropdownMenu open={userMenuOpen} onOpenChange={setUserMenuOpen}>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      type="button"
+                      className="w-9 h-9 rounded-full bg-primary flex items-center justify-center text-primary-foreground font-semibold text-sm hover:opacity-90 transition-opacity focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2"
+                      aria-label="Меню пользователя"
+                    >
+                      {currentUser?.photoURL ? (
+                        <img
+                          src={currentUser.photoURL}
+                          alt="avatar"
+                          className="w-9 h-9 rounded-full object-cover"
+                        />
+                      ) : (
+                        getUserInitials(currentUser)
+                      )}
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-64 p-0 overflow-hidden rounded-2xl shadow-xl">
+                    {/* Шапка с именем и email */}
+                    <div className="flex items-center gap-3 px-4 py-4 bg-card border-b border-border">
+                      <div className="w-10 h-10 rounded-full bg-primary flex items-center justify-center text-primary-foreground font-semibold text-sm shrink-0">
+                        {currentUser?.photoURL ? (
+                          <img
+                            src={currentUser.photoURL}
+                            alt="avatar"
+                            className="w-10 h-10 rounded-full object-cover"
+                          />
+                        ) : (
+                          getUserInitials(currentUser)
+                        )}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="font-semibold text-sm text-foreground truncate">
+                          {currentUser?.displayName || "Диспетчер"}
+                        </p>
+                        <p className="text-xs text-muted-foreground truncate">
+                          {currentUser?.email || ""}
+                        </p>
+                      </div>
+                    </div>
+                    <DropdownMenuSeparator className="my-0" />
+                    {/* Выход */}
+                    <button
+                      type="button"
+                      onClick={handleLogout}
+                      className="w-full flex items-center gap-3 px-4 py-3 text-sm text-red-500 hover:bg-red-500/10 transition-colors"
+                    >
+                      <LogOut className="w-4 h-4" />
+                      Выйти
+                    </button>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
             </div>
           </div>
