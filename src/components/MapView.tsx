@@ -88,6 +88,19 @@ const AVAILABILITY_LABELS: Record<DriverAvailability, string> = {
 };
 
 const ONLINE_STATUS_QUERY_VALUES = ["ONLINE", "online", "Online", "OnLine"];
+const VEHICLE_TYPE_LABELS: Record<string, string> = {
+  broken: "Неисправный автомобиль",
+  standard: "Легковой автомобиль",
+  sedan: "Седан",
+  suv: "Внедорожник",
+  crossover: "Кроссовер",
+  truck: "Грузовой автомобиль",
+  towtruck: "Эвакуатор",
+  "tow truck": "Эвакуатор",
+  tow_truck: "Эвакуатор",
+  motorcycle: "Мотоцикл",
+  bus: "Автобус",
+};
 
 function InfoRow({ label, value, icon }: InfoRowProps) {
   return (
@@ -136,6 +149,19 @@ function extractRating(value: unknown): number | null {
   }
 
   return null;
+}
+
+function formatVehicleType(vehicleType: string | null): string {
+  if (!vehicleType) {
+    return "—";
+  }
+
+  const normalized = vehicleType.trim().toLowerCase();
+  if (normalized.length === 0) {
+    return "—";
+  }
+
+  return VEHICLE_TYPE_LABELS[normalized] ?? vehicleType.trim();
 }
 
 function maskPhoneNumber(value: string | null | undefined): string {
@@ -200,6 +226,7 @@ export default function MapView({ selectedOrder, onAssignDriver, focusedDriverId
   const [locations, setLocations] = useState<Map<string, DriverLocationEntry>>(new Map());
   const [profiles, setProfiles] = useState<Map<string, DriverProfileEntry>>(new Map());
   const [activeDriverId, setActiveDriverId] = useState<string | null>(null);
+  const [dismissedFocusedDriverId, setDismissedFocusedDriverId] = useState<string | null>(null);
   const [assigningDriverId, setAssigningDriverId] = useState<string | null>(null);
   const [orderMarkers, setOrderMarkers] = useState<OrderMarker[]>([]);
   const [activeOrderMarkerId, setActiveOrderMarkerId] = useState<string | null>(null);
@@ -390,6 +417,17 @@ export default function MapView({ selectedOrder, onAssignDriver, focusedDriverId
   }, [locations, profiles]);
 
   useEffect(() => {
+    if (!focusedDriverId) {
+      setDismissedFocusedDriverId(null);
+      return;
+    }
+
+    if (focusedDriverId !== dismissedFocusedDriverId) {
+      setDismissedFocusedDriverId(null);
+    }
+  }, [dismissedFocusedDriverId, focusedDriverId]);
+
+  useEffect(() => {
     if (activeDriverId && !drivers.some((driver) => driver.driverId === activeDriverId)) {
       setActiveDriverId(null);
     }
@@ -398,13 +436,14 @@ export default function MapView({ selectedOrder, onAssignDriver, focusedDriverId
   // При изменении focusedDriverId — паним карту к водителю и открываем InfoWindow
   useEffect(() => {
     if (!focusedDriverId) return;
+    if (focusedDriverId === dismissedFocusedDriverId) return;
     const driver = drivers.find((d) => d.driverId === focusedDriverId);
     if (driver && mapRef.current) {
       mapRef.current.panTo({ lat: driver.lat, lng: driver.lng });
       mapRef.current.setZoom(15);
       setActiveDriverId(focusedDriverId);
     }
-  }, [focusedDriverId, drivers]);
+  }, [dismissedFocusedDriverId, focusedDriverId, drivers]);
 
   // Geocode pickup/dropoff for new unassigned orders
   useEffect(() => {
@@ -565,11 +604,21 @@ export default function MapView({ selectedOrder, onAssignDriver, focusedDriverId
           <Marker
             key={driver.driverId}
             position={{ lat: driver.lat, lng: driver.lng }}
-            onClick={() => setActiveDriverId(driver.driverId)}
+            onClick={() => {
+              setDismissedFocusedDriverId(null);
+              setActiveDriverId(driver.driverId);
+            }}
             icon={icon}
           >
             {activeDriverId === driver.driverId && (
-              <InfoWindow onCloseClick={() => setActiveDriverId(null)}>
+              <InfoWindow
+                onCloseClick={() => {
+                  setActiveDriverId(null);
+                  if (focusedDriverId === driver.driverId) {
+                    setDismissedFocusedDriverId(driver.driverId);
+                  }
+                }}
+              >
                 <div className="min-w-[240px] space-y-4 text-sm text-black">
                   <div className="space-y-1">
                     <p className="text-base font-semibold leading-tight text-black">
@@ -582,7 +631,7 @@ export default function MapView({ selectedOrder, onAssignDriver, focusedDriverId
 
                   <div className="grid gap-1">
                     <InfoRow label="Доступность" value={AVAILABILITY_LABELS[driver.availability]} />
-                    <InfoRow label="Тип ТС" value={driver.vehicleType ?? "—"} />
+                    <InfoRow label="Тип ТС" value={formatVehicleType(driver.vehicleType)} />
                     <InfoRow
                       label="Рейтинг"
                       value={
