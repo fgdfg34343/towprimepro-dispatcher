@@ -16,7 +16,7 @@ import {
 } from "@/lib/driverData";
 import type { AssignDriverPayload, OrderRecord } from "@/hooks/useOrders";
 import { Button } from "@/components/ui/button";
-import { AlertTriangle, Star } from "lucide-react";
+import { AlertTriangle, Star, X } from "lucide-react";
 import { useTheme } from "next-themes";
 
 type DriverAvailability = "FREE" | "BUSY";
@@ -599,6 +599,12 @@ export default function MapView({ selectedOrder, onAssignDriver, focusedDriverId
 
       {drivers.map((driver) => {
         const icon = buildMarkerIcon(driver.availability);
+        const closeDriverInfo = () => {
+          setActiveDriverId(null);
+          if (focusedDriverId === driver.driverId) {
+            setDismissedFocusedDriverId(driver.driverId);
+          }
+        };
 
         return (
           <Marker
@@ -611,22 +617,25 @@ export default function MapView({ selectedOrder, onAssignDriver, focusedDriverId
             icon={icon}
           >
             {activeDriverId === driver.driverId && (
-              <InfoWindow
-                onCloseClick={() => {
-                  setActiveDriverId(null);
-                  if (focusedDriverId === driver.driverId) {
-                    setDismissedFocusedDriverId(driver.driverId);
-                  }
-                }}
-              >
+              <InfoWindow onCloseClick={closeDriverInfo}>
                 <div className="min-w-[240px] space-y-4 text-sm text-black">
-                  <div className="space-y-1">
-                    <p className="text-base font-semibold leading-tight text-black">
-                      {driver.fullName}
-                    </p>
-                    <p className="font-medium text-black">
-                      {maskPhoneNumber(driver.phoneNumber)}
-                    </p>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="space-y-1">
+                      <p className="text-base font-semibold leading-tight text-black">
+                        {driver.fullName}
+                      </p>
+                      <p className="font-medium text-black">
+                        {maskPhoneNumber(driver.phoneNumber)}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={closeDriverInfo}
+                      className="rounded-md p-1 text-black/60 transition-colors hover:bg-black/5 hover:text-black"
+                      aria-label="Закрыть карточку водителя"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
                   </div>
 
                   <div className="grid gap-1">
