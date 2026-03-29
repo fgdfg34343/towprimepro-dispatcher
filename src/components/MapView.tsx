@@ -1,4 +1,4 @@
-import { GoogleMap, InfoWindow, Marker, useJsApiLoader } from "@react-google-maps/api";
+import { GoogleMap, InfoWindow, Marker, OverlayView, useJsApiLoader } from "@react-google-maps/api";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   collection,
@@ -82,10 +82,6 @@ declare global {
   }
 }
 
-const AVAILABILITY_LABELS: Record<DriverAvailability, string> = {
-  FREE: "Свободен",
-  BUSY: "Занят",
-};
 
 const ONLINE_STATUS_QUERY_VALUES = ["ONLINE", "online", "Online", "OnLine"];
 const VEHICLE_TYPE_LABELS: Record<string, string> = {
@@ -581,7 +577,10 @@ export default function MapView({ selectedOrder, onAssignDriver, focusedDriverId
             onClick={() => setActiveOrderMarkerId(activeOrderMarkerId === markerId ? null : markerId)}
           >
             {activeOrderMarkerId === markerId && (
-              <InfoWindow onCloseClick={() => setActiveOrderMarkerId(null)}>
+              <InfoWindow
+                onCloseClick={() => setActiveOrderMarkerId(null)}
+                options={{ disableAutoPan: true }}
+              >
                 <div style={{ fontSize: "13px", minWidth: "180px" }}>
                   <p style={{ fontWeight: "bold", marginBottom: "4px" }}>
                     {isPickup ? "📍 Откуда" : "🏁 Куда"}
@@ -617,65 +616,91 @@ export default function MapView({ selectedOrder, onAssignDriver, focusedDriverId
             icon={icon}
           >
             {activeDriverId === driver.driverId && (
-              <InfoWindow onCloseClick={closeDriverInfo}>
-                <div className="min-w-[240px] space-y-4 text-sm text-black">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="space-y-1">
-                      <p className="text-base font-semibold leading-tight text-black">
-                        {driver.fullName}
-                      </p>
-                      <p className="font-medium text-black">
-                        {maskPhoneNumber(driver.phoneNumber)}
-                      </p>
-                    </div>
+              <OverlayView
+                position={{ lat: driver.lat, lng: driver.lng }}
+                mapPaneName={OverlayView.OVERLAY_MOUSE_TARGET}
+                getPixelPositionOffset={(width, height) => ({
+                  x: -(width / 2),
+                  y: -(height + 18),
+                })}
+              >
+                <div
+                  className="relative min-w-[260px] max-w-[280px] overflow-hidden rounded-2xl bg-white shadow-2xl"
+                  onClick={(e) => e.stopPropagation()}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onPointerDown={(e) => e.stopPropagation()}
+                >
+                  {/* Header */}
+                  <div className="relative bg-gradient-to-br from-slate-700 to-slate-900 px-4 py-3 pr-10">
+                    <p className="text-base font-bold leading-tight text-white">
+                      {driver.fullName}
+                    </p>
+                    <p className="mt-0.5 text-sm text-slate-300">
+                      {maskPhoneNumber(driver.phoneNumber)}
+                    </p>
                     <button
                       type="button"
-                      onClick={closeDriverInfo}
-                      className="rounded-md p-1 text-black/60 transition-colors hover:bg-black/5 hover:text-black"
+                      onClick={(e) => { e.stopPropagation(); closeDriverInfo(); }}
+                      className="absolute right-2 top-2 rounded-lg p-1 text-white/60 transition-colors hover:bg-white/10 hover:text-white"
                       aria-label="Закрыть карточку водителя"
                     >
                       <X className="h-4 w-4" />
                     </button>
                   </div>
 
-                  <div className="grid gap-1">
-                    <InfoRow label="Доступность" value={AVAILABILITY_LABELS[driver.availability]} />
-                    <InfoRow label="Тип ТС" value={formatVehicleType(driver.vehicleType)} />
-                    <InfoRow
-                      label="Рейтинг"
-                      value={
-                        driver.rating !== null ? driver.rating.toFixed(1) : "Нет данных"
-                      }
-                      icon={driver.rating !== null ? <Star className="h-3 w-3 fill-amber-500 text-amber-500" /> : undefined}
-                    />
-                    <InfoRow label="Статус" value={driver.isVerified ? "Проверен" : "Без проверки"} />
-                    <InfoRow
-                      label="Обновлено"
-                      value={
-                        driver.updatedAt
-                          ? driver.updatedAt.toLocaleTimeString("ru-RU", {
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })
-                          : "—"
-                      }
-                    />
+                  {/* Body */}
+                  <div className="px-4 py-3">
+                    <div className="grid gap-2">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-xs font-semibold tracking-wide text-slate-500">
+                          Статус
+                        </span>
+                        <span className="flex items-center gap-1.5 text-sm font-semibold text-emerald-600">
+                          <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />
+                          В сети
+                        </span>
+                      </div>
+                      <div className="h-px bg-slate-100" />
+                      <InfoRow label="Тип ТС" value={formatVehicleType(driver.vehicleType)} />
+                      <InfoRow
+                        label="Рейтинг"
+                        value={
+                          driver.rating !== null ? driver.rating.toFixed(1) : "Нет данных"
+                        }
+                        icon={driver.rating !== null ? <Star className="h-3 w-3 fill-amber-400 text-amber-400" /> : undefined}
+                      />
+                      <InfoRow label="Верификация" value={driver.isVerified ? "Проверен" : "Не проверен"} />
+                      <InfoRow
+                        label="Обновлено"
+                        value={
+                          driver.updatedAt
+                            ? driver.updatedAt.toLocaleTimeString("ru-RU", {
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })
+                            : "—"
+                        }
+                      />
+                    </div>
                   </div>
 
-                  <Button
-                    className="w-full"
-                    size="sm"
-                    disabled={!selectedOrder || assigningDriverId === driver.driverId}
-                    onClick={() => handleAssignDriver(driver)}
-                  >
-                    {assigningDriverId === driver.driverId
-                      ? "Назначаем..."
-                      : selectedOrder
-                        ? "Назначить на заказ"
-                        : "Выберите заявку"}
-                  </Button>
+                  {/* Footer */}
+                  <div className="px-4 pb-4">
+                    <Button
+                      className="w-full"
+                      size="sm"
+                      disabled={!selectedOrder || assigningDriverId === driver.driverId}
+                      onClick={(e) => { e.stopPropagation(); handleAssignDriver(driver); }}
+                    >
+                      {assigningDriverId === driver.driverId
+                        ? "Назначаем..."
+                        : selectedOrder
+                          ? "Назначить на заказ"
+                          : "Выберите заявку"}
+                    </Button>
+                  </div>
                 </div>
-              </InfoWindow>
+              </OverlayView>
             )}
           </Marker>
         );
