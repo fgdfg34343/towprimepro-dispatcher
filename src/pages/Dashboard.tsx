@@ -176,6 +176,7 @@ const Dashboard = () => {
   const [quickClientSupportChatId, setQuickClientSupportChatId] = useState<string | null>(null);
   const [createOrderOpen, setCreateOrderOpen] = useState(false);
   const [focusedDriverId, setFocusedDriverId] = useState<string | null>(null);
+  const [focusNonce, setFocusNonce] = useState(0);
   const [selectedDriverId, setSelectedDriverId] = useState<string | null>(null);
   const [orderAttentionState, setOrderAttentionState] = useState<OrderAttentionState>(
     () => loadStoredOrderAttentionState()
@@ -246,6 +247,7 @@ const Dashboard = () => {
   const handleSelectDriver = (driverId: string) => {
     setSelectedDriverId(driverId);
     setFocusedDriverId(driverId);
+    setFocusNonce((n) => n + 1);
   };
 
   useEffect(() => {
@@ -847,6 +849,7 @@ const Dashboard = () => {
                 selectedOrder={selectedOrder}
                 onAssignDriver={ordersState.assignDriver}
                 focusedDriverId={focusedDriverId}
+                focusNonce={focusNonce}
                 orders={ordersState.orders}
               />
             )}

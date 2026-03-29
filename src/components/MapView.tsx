@@ -73,6 +73,7 @@ interface MapViewProps {
   selectedOrder: OrderRecord | null;
   onAssignDriver: (payload: AssignDriverPayload) => Promise<void>;
   focusedDriverId?: string | null;
+  focusNonce?: number;
   orders?: OrderRecord[];
 }
 
@@ -207,7 +208,7 @@ function buildMarkerIcon(availability: DriverAvailability): google.maps.Icon | u
   } as google.maps.Icon;
 }
 
-export default function MapView({ selectedOrder, onAssignDriver, focusedDriverId, orders = [] }: MapViewProps) {
+export default function MapView({ selectedOrder, onAssignDriver, focusedDriverId, focusNonce, orders = [] }: MapViewProps) {
   const { resolvedTheme } = useTheme();
   const googleMapsApiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY?.trim() ?? "";
   const currentOrigin =
@@ -415,13 +416,8 @@ export default function MapView({ selectedOrder, onAssignDriver, focusedDriverId
   useEffect(() => {
     if (!focusedDriverId) {
       setDismissedFocusedDriverId(null);
-      return;
     }
-
-    if (focusedDriverId !== dismissedFocusedDriverId) {
-      setDismissedFocusedDriverId(null);
-    }
-  }, [dismissedFocusedDriverId, focusedDriverId]);
+  }, [focusedDriverId]);
 
   useEffect(() => {
     if (activeDriverId && !drivers.some((driver) => driver.driverId === activeDriverId)) {
@@ -429,17 +425,20 @@ export default function MapView({ selectedOrder, onAssignDriver, focusedDriverId
     }
   }, [activeDriverId, drivers]);
 
-  // При изменении focusedDriverId — паним карту к водителю и открываем InfoWindow
+  // При нажатии на водителя — всегда паним карту и открываем InfoWindow
   useEffect(() => {
-    if (!focusedDriverId) return;
-    if (focusedDriverId === dismissedFocusedDriverId) return;
+    if (!focusedDriverId || !focusNonce) return;
+    // Сбрасываем dismissed чтобы повторный клик на того же водителя всегда работал
+    setDismissedFocusedDriverId(null);
     const driver = drivers.find((d) => d.driverId === focusedDriverId);
     if (driver && mapRef.current) {
       mapRef.current.panTo({ lat: driver.lat, lng: driver.lng });
       mapRef.current.setZoom(15);
       setActiveDriverId(focusedDriverId);
     }
-  }, [dismissedFocusedDriverId, focusedDriverId, drivers]);
+  // focusNonce меняется при каждом клике → эффект всегда срабатывает
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusNonce]);
 
   // Geocode pickup/dropoff for new unassigned orders
   useEffect(() => {
