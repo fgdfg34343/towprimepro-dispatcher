@@ -137,19 +137,16 @@ function buildFallbackSuggestions(query, userCity) {
   return suggestions.length ? suggestions : [`${baseCity}, ${trimmed}`];
 }
 
-function simulateDistance(from, to, userCity) {
-  if (!from || !to) return 0;
-  const fromNorm = normalizeText(from);
-  const toNorm = normalizeText(to);
-  const cityBoost = userCity && (fromNorm.includes(normalizeText(userCity)) || toNorm.includes(normalizeText(userCity))) ? 4 : 0;
-  const seed = (from.length * 11 + to.length * 7 + cityBoost + from.charCodeAt(0) + to.charCodeAt(0)) % 45;
-  return Math.max(6, seed + 10);
+function formatDistance(distanceKm) {
+  if (!Number.isFinite(distanceKm) || distanceKm <= 0) return '';
+  const rounded = distanceKm >= 100 ? Math.round(distanceKm) : Number(distanceKm.toFixed(1));
+  return `${rounded.toLocaleString('ru-RU')} км по дорогам`;
 }
 
 function calculatePrice({ lockedWheels, truckType, distance }) {
-  if (!distance) return null;
+  if (!Number.isFinite(distance) || distance <= 0) return null;
   const selectedTruck = TRUCK_TYPES.find((t) => t.id === truckType) || TRUCK_TYPES[0];
-  return selectedTruck.base + (distance * selectedTruck.perKm) + lockedWheels * 800;
+  return Math.round(selectedTruck.base + (distance * selectedTruck.perKm) + lockedWheels * 800);
 }
 
 // ─── Яндекс Карты ──────────────────────────────────────────────────────────
@@ -194,9 +191,13 @@ async function reverseGeocodeYandex(coords) {
   }
 }
 
-async function geocodeAddress(address) {
+async function geocodeAddress(address, biasPoint) {
   try {
-    const resp = await fetch(`/api/geocode?address=${encodeURIComponent(address)}`);
+    const params = new URLSearchParams({ address });
+    if (biasPoint?.lat && biasPoint?.lng) {
+      params.set('ll', `${biasPoint.lng},${biasPoint.lat}`);
+    }
+    const resp = await fetch(`/api/geocode?${params.toString()}`);
     const data = await resp.json();
     return data.coords || null;
   } catch {
@@ -208,7 +209,7 @@ async function calcDirectionsRoute(fromCoords, toCoords) {
   try {
     const resp = await fetch(`/api/route?from=${fromCoords.lat},${fromCoords.lng}&to=${toCoords.lat},${toCoords.lng}`);
     const data = await resp.json();
-    if (!data.polylineCoords?.length) return null;
+    if (!data.polylineCoords?.length || !Number.isFinite(data.distanceKm)) return null;
     return { distanceKm: data.distanceKm, polylineCoords: data.polylineCoords };
   } catch {
     return null;
@@ -224,6 +225,37 @@ function MapPicker({ fromCoords, toCoords, polylineCoords, pinMode, onPinModeCha
   const toPlacemarkRef = useRef(null);
   const polylineRef = useRef(null);
   const [mapReady, setMapReady] = useState(false);
+  const [geoLoading, setGeoLoading] = useState(false);
+  const [geoError, setGeoError] = useState('');
+
+  const handleGeolocate = () => {
+    if (!navigator.geolocation) {
+      setGeoError('Геолокация не поддерживается');
+      return;
+    }
+    setGeoLoading(true);
+    setGeoError('');
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const { latitude, longitude } = pos.coords;
+        const address = await reverseGeocodeYandex([latitude, longitude]);
+        if (address) {
+          onFromChange(address, { lat: latitude, lng: longitude });
+          if (mapInstanceRef.current) {
+            mapInstanceRef.current.setCenter([latitude, longitude], 14, { duration: 500 });
+          }
+        } else {
+          setGeoError('Не удалось определить адрес');
+        }
+        setGeoLoading(false);
+      },
+      () => {
+        setGeoError('Нет доступа к геолокации');
+        setGeoLoading(false);
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  };
 
   useEffect(() => {
     loadYandexMaps().then((ymaps) => {
@@ -330,7 +362,9 @@ function MapPicker({ fromCoords, toCoords, polylineCoords, pinMode, onPinModeCha
 
   return (
     <div className="rounded-2xl overflow-hidden border border-slate-200 relative shadow-sm" style={{ height: 300 }}>
-      <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10 flex gap-2">
+
+      {/* Верхняя панель: Откуда / Куда / Геолокация */}
+      <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10 flex items-center gap-2">
         <button
           type="button"
           onClick={() => onPinModeChange('from')}
@@ -351,7 +385,36 @@ function MapPicker({ fromCoords, toCoords, polylineCoords, pinMode, onPinModeCha
           <span className="w-4 h-4 rounded-full bg-slate-900 border-2 border-white inline-block" />
           Куда
         </button>
+
+        {/* Кнопка геолокации */}
+        <button
+          type="button"
+          onClick={handleGeolocate}
+          disabled={geoLoading}
+          title="Определить моё местоположение"
+          className="w-8 h-8 rounded-full bg-white shadow-lg border border-slate-200 flex items-center justify-center hover:bg-orange-50 hover:border-orange-300 transition-all active:scale-95 disabled:opacity-60"
+        >
+          {geoLoading ? (
+            <svg className="animate-spin w-4 h-4 text-orange-500" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+            </svg>
+          ) : (
+            <svg className="w-4 h-4 text-orange-500" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+              <circle cx="12" cy="12" r="3" fill="currentColor" stroke="none" />
+              <path strokeLinecap="round" d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22" />
+              <circle cx="12" cy="12" r="7" />
+            </svg>
+          )}
+        </button>
       </div>
+
+      {/* Ошибка геолокации */}
+      {geoError && (
+        <div className="absolute top-14 left-1/2 -translate-x-1/2 z-10 bg-white border border-orange-200 text-orange-700 text-xs rounded-xl px-3 py-2 shadow-md whitespace-nowrap">
+          📍 {geoError} — разрешите доступ в браузере
+        </div>
+      )}
 
       {(pinMode === 'from' || pinMode === 'to') && (
         <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-10 bg-white/90 backdrop-blur-sm border border-slate-200 rounded-full px-3 py-1.5 text-xs font-medium text-slate-600 shadow-md whitespace-nowrap">
@@ -501,6 +564,7 @@ export default function Calculator({ onOrderClick }) {
   const [distance, setDistance] = useState(null);
   const [loading, setLoading] = useState(false);
   const [price, setPrice] = useState(null);
+  const [routeError, setRouteError] = useState('');
   const [geoState, setGeoState] = useState({ status: 'idle', city: '', coords: null });
 
   const [paymentMethod, setPaymentMethod] = useState('cash');
@@ -509,6 +573,13 @@ export default function Calculator({ onOrderClick }) {
   const [fromCoords, setFromCoords] = useState(null);
   const [toCoords, setToCoords] = useState(null);
   const [polylineCoords, setPolylineCoords] = useState(null);
+
+  const clearRouteState = useCallback(() => {
+    setDistance(null);
+    setPrice(null);
+    setPolylineCoords(null);
+    setRouteError('');
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -539,12 +610,19 @@ export default function Calculator({ onOrderClick }) {
 
   const calcRouteCoords = useCallback(async (fc, tc) => {
     setLoading(true);
+    setRouteError('');
     try {
       const res = await calcDirectionsRoute(fc, tc);
       if (res) {
         setDistance(res.distanceKm);
         setPolylineCoords(res.polylineCoords);
+        return true;
       }
+      setDistance(null);
+      setPrice(null);
+      setPolylineCoords(null);
+      setRouteError('Не удалось точно построить маршрут. Выберите адрес из подсказок или укажите точки на карте.');
+      return false;
     } finally {
       setLoading(false);
     }
@@ -553,11 +631,12 @@ export default function Calculator({ onOrderClick }) {
   const calcPrice = useCallback(async () => {
     if (!from || !to) return;
     setLoading(true);
+    setRouteError('');
     try {
       let fc = fromCoords;
       let tc = toCoords;
-      if (!fc) fc = await geocodeAddress(from);
-      if (!tc) tc = await geocodeAddress(to);
+      if (!fc) fc = await geocodeAddress(from, geoState.coords);
+      if (!tc) tc = await geocodeAddress(to, fc || geoState.coords);
       if (fc) setFromCoords(fc);
       if (tc) setToCoords(tc);
       if (fc && tc) {
@@ -565,14 +644,18 @@ export default function Calculator({ onOrderClick }) {
         if (res) {
           setDistance(res.distanceKm);
           setPolylineCoords(res.polylineCoords);
+        } else {
+          clearRouteState();
+          setRouteError('Не удалось точно построить маршрут. Выберите адрес из подсказок или укажите точки на карте.');
         }
       } else {
-        setDistance(simulateDistance(from, to, geoState.city));
+        clearRouteState();
+        setRouteError('Не удалось определить одну из точек маршрута. Выберите адрес из подсказок или укажите точки на карте.');
       }
     } finally {
       setLoading(false);
     }
-  }, [from, to, fromCoords, toCoords, geoState.city]);
+  }, [from, to, fromCoords, toCoords, geoState.coords, clearRouteState]);
 
   useEffect(() => {
     if (distance !== null) {
@@ -587,81 +670,78 @@ export default function Calculator({ onOrderClick }) {
       let fc = fromCoords;
       let tc = toCoords;
       if (from && !fc) {
-        fc = await geocodeAddress(from);
+        fc = await geocodeAddress(from, geoState.coords);
         if (fc) setFromCoords(fc);
       }
       if (to && !tc) {
-        tc = await geocodeAddress(to);
+        tc = await geocodeAddress(to, fc || geoState.coords);
         if (tc) setToCoords(tc);
       }
       if (fc && tc && !polylineCoords) calcRouteCoords(fc, tc);
     })();
-  }, [showMap]);
+  }, [showMap, from, to, fromCoords, toCoords, geoState.coords, polylineCoords, calcRouteCoords]);
 
   // Автогеокодирование при вводе адреса пока карта открыта
   useEffect(() => {
     if (!showMap || !from || from.length < 5) return;
     const timer = setTimeout(async () => {
-      const coords = await geocodeAddress(from);
+      const coords = await geocodeAddress(from, geoState.coords);
       if (coords) {
         setFromCoords(coords);
         if (toCoords) calcRouteCoords(coords, toCoords);
       }
     }, 1000);
     return () => clearTimeout(timer);
-  }, [from, showMap]);
+  }, [from, showMap, geoState.coords, toCoords, calcRouteCoords]);
 
   useEffect(() => {
     if (!showMap || !to || to.length < 5) return;
     const timer = setTimeout(async () => {
-      const coords = await geocodeAddress(to);
+      const coords = await geocodeAddress(to, fromCoords || geoState.coords);
       if (coords) {
         setToCoords(coords);
         if (fromCoords) calcRouteCoords(fromCoords, coords);
       }
     }, 1000);
     return () => clearTimeout(timer);
-  }, [to, showMap]);
+  }, [to, showMap, fromCoords, geoState.coords, calcRouteCoords]);
 
   const handleFromConfirm = useCallback(async (address) => {
-    const coords = await geocodeAddress(address);
+    setRouteError('');
+    const coords = await geocodeAddress(address, geoState.coords);
     if (coords) {
       setFromCoords(coords);
       if (toCoords) calcRouteCoords(coords, toCoords);
     }
-  }, [toCoords, calcRouteCoords]);
+  }, [geoState.coords, toCoords, calcRouteCoords]);
 
   const handleToConfirm = useCallback(async (address) => {
-    const coords = await geocodeAddress(address);
+    setRouteError('');
+    const coords = await geocodeAddress(address, fromCoords || geoState.coords);
     if (coords) {
       setToCoords(coords);
       if (fromCoords) calcRouteCoords(fromCoords, coords);
     }
-  }, [fromCoords, calcRouteCoords]);
+  }, [fromCoords, geoState.coords, calcRouteCoords]);
 
   const handleFromMapChange = useCallback((address, coords) => {
     setFrom(address);
     setFromCoords(coords);
-    setDistance(null);
-    setPrice(null);
-    setPolylineCoords(null);
+    clearRouteState();
     if (coords && toCoords) calcRouteCoords(coords, toCoords);
-  }, [toCoords, calcRouteCoords]);
+  }, [toCoords, calcRouteCoords, clearRouteState]);
 
   const handleToMapChange = useCallback((address, coords) => {
     setTo(address);
     setToCoords(coords);
-    setDistance(null);
-    setPrice(null);
-    setPolylineCoords(null);
+    clearRouteState();
     if (fromCoords && coords) calcRouteCoords(fromCoords, coords);
-  }, [fromCoords, calcRouteCoords]);
+  }, [fromCoords, calcRouteCoords, clearRouteState]);
 
   const reset = () => {
     setFrom('');
     setTo('');
-    setDistance(null);
-    setPrice(null);
+    clearRouteState();
     setTruckType('broken');
     setLockedWheels(0);
     setCarType('sedan');
@@ -712,7 +792,7 @@ export default function Calculator({ onOrderClick }) {
             icon={MapPin}
             placeholder="Откуда забрать"
             value={from}
-            onChange={(v) => { setFrom(v); setDistance(null); setPrice(null); setPolylineCoords(null); }}
+            onChange={(v) => { setFrom(v); setFromCoords(null); clearRouteState(); }}
             onConfirm={handleFromConfirm}
             userCity={geoState.city}
             currentPosition={geoState.coords}
@@ -721,7 +801,7 @@ export default function Calculator({ onOrderClick }) {
             icon={Navigation}
             placeholder="Куда доставить"
             value={to}
-            onChange={(v) => { setTo(v); setDistance(null); setPrice(null); setPolylineCoords(null); }}
+            onChange={(v) => { setTo(v); setToCoords(null); clearRouteState(); }}
             onConfirm={handleToConfirm}
             userCity={geoState.city}
             currentPosition={geoState.coords}
@@ -752,6 +832,12 @@ export default function Calculator({ onOrderClick }) {
             />
           )}
 
+          {routeError && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-700">
+              {routeError}
+            </div>
+          )}
+
           {from && to && !distance && (
             <button
               onClick={calcPrice}
@@ -769,7 +855,7 @@ export default function Calculator({ onOrderClick }) {
           {distance && (
             <div className="flex items-center gap-2 px-3 py-2 bg-green-50 rounded-xl border border-green-100">
               <div className="w-2 h-2 bg-green-400 rounded-full" />
-              <span className="text-green-700 text-xs font-medium">Маршрут: ~{distance} км по дорогам</span>
+              <span className="text-green-700 text-xs font-medium">Маршрут: {formatDistance(distance)}</span>
             </div>
           )}
         </div>

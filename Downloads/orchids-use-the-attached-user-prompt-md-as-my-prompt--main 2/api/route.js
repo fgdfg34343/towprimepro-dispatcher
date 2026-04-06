@@ -6,8 +6,11 @@ export default async function handler(req, res) {
   if (!from || !to) return res.status(400).json({ error: 'from and to required' });
 
   // from/to в формате "lat,lng"
-  const [fromLat, fromLng] = from.split(',');
-  const [toLat, toLng] = to.split(',');
+  const [fromLat, fromLng] = from.split(',').map(Number);
+  const [toLat, toLng] = to.split(',').map(Number);
+  if (![fromLat, fromLng, toLat, toLng].every(Number.isFinite)) {
+    return res.status(400).json({ error: 'invalid coordinates' });
+  }
 
   try {
     // OSRM — бесплатный роутинг
@@ -20,7 +23,7 @@ export default async function handler(req, res) {
     }
 
     const route = data.routes[0];
-    const distanceKm = Math.round(route.distance / 1000);
+    const distanceKm = Number((route.distance / 1000).toFixed(1));
     // OSRM возвращает [lng, lat] — конвертируем в [lat, lng] для Яндекс карт
     const polylineCoords = route.geometry.coordinates.map(([lng, lat]) => [lat, lng]);
 
