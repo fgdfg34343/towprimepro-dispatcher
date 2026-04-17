@@ -1,0 +1,163 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
+All colors MUST be HSL.
+*/
+
+@layer base {
+  :root {
+    /* Light theme */
+    --background: 210 33% 98%;
+    --background-elevated: 0 0% 100%;
+    --foreground: 222 47% 11%;
+    
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+    
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+    
+    --primary: 22 100% 56%;
+    --primary-foreground: 0 0% 100%;
+    --primary-hover: 22 100% 48%;
+    
+    --secondary: 215 25% 90%;
+    --secondary-foreground: 222 47% 11%;
+    
+    --muted: 210 25% 94%;
+    --muted-foreground: 215 16% 40%;
+    
+    --accent: 22 100% 56%;
+    --accent-foreground: 0 0% 100%;
+    
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    
+    --status-new: 217 91% 60%;
+    --status-assigned: 45 93% 47%;
+    --status-in-progress: 189 94% 43%;
+    --status-completed: 142 71% 45%;
+    --status-cancelled: 215 16% 47%;
+    
+    --border: 214 25% 88%;
+    --input: 214 25% 88%;
+    --ring: 22 100% 56%;
+    
+    --radius: 0.75rem;
+    
+    --gradient-primary: linear-gradient(135deg, hsl(22 100% 56%), hsl(22 100% 48%));
+    --gradient-dark: linear-gradient(180deg, hsl(210 33% 98%), hsl(210 25% 95%));
+    
+    --shadow-sm: 0 1px 2px 0 rgb(15 23 42 / 0.06);
+    --shadow-md: 0 12px 24px -12px rgb(15 23 42 / 0.14);
+    --shadow-lg: 0 24px 48px -24px rgb(15 23 42 / 0.2);
+    --shadow-glow: 0 0 20px hsl(22 100% 56% / 0.22);
+  }
+
+  .dark {
+    --background: 218 24% 7%;
+    --background-elevated: 216 18% 11%;
+    --foreground: 210 20% 98%;
+    
+    --card: 216 18% 11%;
+    --card-foreground: 210 20% 98%;
+    
+    --popover: 216 18% 11%;
+    --popover-foreground: 210 20% 98%;
+    
+    --primary: 22 100% 56%;
+    --primary-foreground: 0 0% 100%;
+    --primary-hover: 22 100% 48%;
+    
+    --secondary: 215 16% 47%;
+    --secondary-foreground: 210 20% 98%;
+    
+    --muted: 217 20% 15%;
+    --muted-foreground: 215 16% 65%;
+    
+    --accent: 22 100% 56%;
+    --accent-foreground: 0 0% 100%;
+    
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 210 40% 98%;
+    
+    --status-new: 217 91% 60%;
+    --status-assigned: 45 93% 47%;
+    --status-in-progress: 189 94% 43%;
+    --status-completed: 142 71% 45%;
+    --status-cancelled: 215 16% 47%;
+    
+    --border: 217 21% 17%;
+    --input: 217 21% 17%;
+    --ring: 22 100% 56%;
+    
+    --gradient-primary: linear-gradient(135deg, hsl(22 100% 56%), hsl(22 100% 48%));
+    --gradient-dark: linear-gradient(180deg, hsl(218 24% 7%), hsl(216 18% 11%));
+    
+    --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.3);
+    --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.4);
+    --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.5);
+    --shadow-glow: 0 0 20px hsl(22 100% 56% / 0.3);
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  
+  html {
+    @apply antialiased;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+    transition: background-color 0.2s ease, color 0.2s ease;
+  }
+  
+  /* Scrollbar styling */
+  ::-webkit-scrollbar {
+    @apply w-2 h-2;
+  }
+  
+  ::-webkit-scrollbar-track {
+    @apply bg-background;
+  }
+  
+  ::-webkit-scrollbar-thumb {
+    @apply bg-muted rounded-full;
+  }
+  
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-muted-foreground/50;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  @keyframes order-attention {
+    0%, 100% {
+      transform: translateY(0);
+      box-shadow:
+        0 0 0 1px rgba(251, 146, 60, 0.45),
+        0 0 18px rgba(249, 115, 22, 0.16);
+    }
+
+    50% {
+      transform: translateY(-1px);
+      box-shadow:
+        0 0 0 1px rgba(251, 146, 60, 0.7),
+        0 0 26px rgba(249, 115, 22, 0.32);
+    }
+  }
+
+  .animate-order-attention {
+    animation: order-attention 1.6s ease-in-out infinite;
+  }
+}
