@@ -749,7 +749,343 @@ def run_smart():
 
 
 # ─────────────────────────────────────────────────────────────
-# СТРАТЕГИЯ 3: SCAN — Математика + Claude
+# СТРАТЕГИЯ 3: RESEARCH — Весь Polymarket + внешние данные
+# ─────────────────────────────────────────────────────────────
+def fetch_coingecko():
+    """Реальные цены топ криптовалют — бесплатно без ключа."""
+    try:
+        data = fetch(
+            "https://api.coingecko.com/api/v3/simple/price"
+            "?ids=bitcoin,ethereum,solana,dogecoin,ripple,cardano"
+            "&vs_currencies=usd&include_24hr_change=true"
+        )
+        lines = []
+        for coin, vals in data.items():
+            price = vals.get("usd", 0)
+            change = vals.get("usd_24h_change", 0)
+            lines.append(f"{coin.upper()}: ${price:,.0f} ({change:+.1f}% 24h)")
+        return "\n".join(lines)
+    except Exception as e:
+        return f"CoinGecko недоступен: {e}"
+
+def fetch_metaculus_forecasts():
+    """Топ активных вопросов с прогнозами сообщества Metaculus."""
+    try:
+        data = fetch(
+            "https://www.metaculus.com/api2/questions/"
+            "?status=open&order_by=-activity&limit=30&forecast_type=binary"
+        )
+        questions = data.get("results", [])
+        lines = []
+        for q in questions:
+            title = q.get("title", "")[:80]
+            cp = q.get("community_prediction", {})
+            prob = cp.get("q2") or cp.get("full", {}).get("q2")
+            if prob is None:
+                continue
+            close = q.get("close_time", "")[:10]
+            lines.append(f'METACULUS: "{title}" prob={prob:.2f} close={close}')
+        return "\n".join(lines[:20]) if lines else "нет данных"
+    except Exception as e:
+        return f"Metaculus недоступен: {e}"
+
+def classify_market(question, slug):
+    """Определяем категорию рынка по ключевым словам."""
+    q = (question + " " + slug).lower()
+    if any(k in q for k in ["bitcoin","btc","ethereum","eth","crypto","solana","sol","doge","xrp"]):
+        return "crypto"
+    if any(k in q for k in ["trump","biden","election","president","congress","senate","vote","poll","republican","democrat","modi","macron","putin","xi "]):
+        return "politics"
+    if any(k in q for k in ["nba","nfl","mlb","nhl","soccer","football","tennis","golf","cricket","f1","ufc","boxing"]):
+        return "sports"
+    if any(k in q for k in ["fed","rate","gdp","inflation","recession","unemployment","s&p","nasdaq","dow","oil","gold","silver"]):
+        return "economy"
+    if any(k in q for k in ["ai","openai","gpt","claude","anthropic","google","apple","microsoft","meta ","amazon","tesla"]):
+        return "tech"
+    if any(k in q for k in ["war","ceasefire","sanctions","nato","ukraine","russia","israel","iran","china","taiwan"]):
+        return "geopolitics"
+    return "other"
+
+def run_research():
+    """
+    Сканирует ВЕСЬ Polymarket по всем категориям.
+    Для каждого топ-рынка подтягивает реальные данные (крипта, Metaculus)
+    и просит Claude оценить вероятность на основе этих данных.
+    """
+    print("\n[RESEARCH] ═══ СТРАТЕГИЯ 3: Весь Polymarket + реальные данные ═══")
+
+    if not ANTHROPIC_API_KEY:
+        print("[RESEARCH] Нет ANTHROPIC_API_KEY — пропускаю")
+        return
+
+    # Загружаем топ рынков напрямую (быстрее чем полный скан)
+    try:
+        all_markets = []
+        from datetime import timezone as _tz
+        now = datetime.now(timezone.utc)
+        req = urllib.request.Request(
+            f"{GAMMA}/markets?active=true&closed=false"
+            f"&limit=50&offset=0&order=volume24hr&ascending=false",
+            headers={"User-Agent": "polymarket-bot/1.0"}
+        )
+        with urllib.request.urlopen(req, timeout=60) as r:
+            batch = json.loads(r.read())
+        if isinstance(batch, list):
+            all_markets.extend(batch)
+        elif isinstance(batch, dict):
+            all_markets.extend(batch.get("markets", []))
+        # Парсим даты и цены
+        parsed = []
+        for m in all_markets:
+            try:
+                liq = float(m.get("liquidity", 0) or 0)
+                if liq < 20000:
+                    continue
+                end = m.get("endDate") or m.get("end_date_iso", "")
+                if end:
+                    end_dt = datetime.fromisoformat(end.replace("Z", "+00:00"))
+                    days = (end_dt - now).days
+                    if not (1 <= days <= 90):
+                        continue
+                    m["_days_left"] = days
+                else:
+                    continue
+                outcomes = m.get("outcomes", "[]")
+                if isinstance(outcomes, str):
+                    outcomes = json.loads(outcomes)
+                m["_outcomes_parsed"] = outcomes
+                prices = m.get("outcomePrices", "[]")
+                if isinstance(prices, str):
+                    prices = json.loads(prices)
+                m["_prices_parsed"] = [float(p) for p in prices if p]
+                parsed.append(m)
+            except Exception:
+                continue
+        all_markets = parsed
+    except Exception as e:
+        print(f"[RESEARCH] Ошибка загрузки рынков: {e}")
+        return
+
+    print(f"[RESEARCH] Всего рынков: {len(all_markets)}")
+
+    # Фильтр: 1-21 день, цена 10-85¢ (интересная зона неопределённости)
+    candidates = []
+    for m in all_markets:
+        days = m.get("_days_left", 999)
+        prices = m.get("_prices_parsed", [])
+        liq = float(m.get("liquidity", 0) or 0)
+        if not (1 <= days <= 90):
+            continue
+        if liq < 10000:
+            continue
+        # Смотрим только на цены в зоне 10-85¢ — там есть настоящая неопределённость
+        interesting = any(0.10 <= p <= 0.85 for p in prices)
+        if not interesting:
+            continue
+        q = m.get("question") or m.get("title", "")
+        m["_category"] = classify_market(q, m.get("slug", ""))
+        candidates.append(m)
+
+    # Сортируем: сначала по объёму торгов за 24ч
+    candidates.sort(key=lambda x: float(x.get("volume24hr", 0) or 0), reverse=True)
+    candidates = candidates[:80]
+
+    # Группируем по категориям для статистики
+    by_cat = {}
+    for m in candidates:
+        cat = m["_category"]
+        by_cat.setdefault(cat, 0)
+        by_cat[cat] += 1
+    print(f"[RESEARCH] Кандидатов: {len(candidates)} — {by_cat}")
+
+    # Собираем внешние данные
+    print("[RESEARCH] Загружаю внешние данные...")
+    crypto_data = fetch_coingecko()
+    metaculus_data = fetch_metaculus_forecasts()
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+    # Формируем список рынков для Claude
+    market_lines = []
+    for m in candidates:
+        prices = m.get("_prices_parsed", [])
+        outcomes = m.get("_outcomes_parsed", [])
+        days = m.get("_days_left", "?")
+        liq = float(m.get("liquidity", 0) or 0)
+        vol = float(m.get("volume24hr", 0) or 0)
+        cat = m.get("_category", "other")
+        price_str = " | ".join(
+            f"{o}={p:.2f}" for o, p in zip(outcomes, prices)
+            if 0.05 <= p <= 0.95
+        )
+        q = m.get("question") or m.get("title", "")
+        market_lines.append(
+            f"[{cat.upper()}] SLUG:{m.get('slug')} DAYS:{days} "
+            f"LIQ:${liq:,.0f} VOL24h:${vol:,.0f} "
+            f"PRICES:[{price_str}] \"{q}\""
+        )
+
+    system_prompt = f"""Ты опытный трейдер на prediction markets. Сегодня {today}.
+
+ВНЕШНИЕ ДАННЫЕ ДЛЯ АНАЛИЗА:
+
+=== КРИПТА (реальные цены прямо сейчас) ===
+{crypto_data}
+
+=== METACULUS ПРОГНОЗЫ СООБЩЕСТВА ===
+{metaculus_data}
+
+ТВОЯ ЗАДАЧА:
+Найди рынки где цена на Polymarket ЯВНО неправильная по сравнению с реальностью.
+
+ПРАВИЛА ОТБОРА:
+1. Нужен конкретный внешний факт/данные подтверждающий твою оценку
+2. НЕ угадывай — если нет внешнего подтверждения, не включай рынок
+3. Для крипта-рынков: используй реальные цены выше
+4. Для политики: используй известные факты, опросы, базовые ставки
+5. Для Metaculus рынков: если видишь совпадение по теме — используй их прогноз
+6. our_probability ≥ 0.60 И bet_price ≤ 0.70
+7. EV = our_probability / bet_price - 1 ≥ 0.20
+
+ФОРМАТ — только JSON массив:
+[{{
+  "slug": "...",
+  "question": "...",
+  "category": "crypto/politics/sports/economy/tech/geopolitics/other",
+  "bet_outcome": "YES или NO или название исхода",
+  "bet_price": 0.XX,
+  "our_probability": 0.XX,
+  "ev_percent": XX,
+  "days_to_resolution": N,
+  "liquidity": NNNNN,
+  "conviction": "HIGH/MEDIUM/LOW",
+  "external_evidence": "конкретный факт/источник подтверждающий оценку",
+  "risk": "что может пойти не так"
+}}]
+
+Верни 3-5 лучших. Только рынки где есть реальный внешний факт."""
+
+    user_prompt = (
+        f"Проанализируй эти {len(candidates)} рынков и найди выигрышные ставки:\n\n"
+        + "\n".join(market_lines)
+    )
+
+    print(f"[RESEARCH] Отправляю {len(candidates)} рынков в Claude...")
+
+    try:
+        response = call_claude(system_prompt, user_prompt, max_tokens=3000)
+    except Exception as e:
+        print(f"[RESEARCH] Claude ошибка: {e}")
+        return
+
+    opportunities = []
+    try:
+        jmatch = re.search(r'\[.*\]', response, re.DOTALL)
+        if jmatch:
+            opportunities = json.loads(jmatch.group())
+    except Exception:
+        print(f"[RESEARCH] Ошибка парсинга:\n{response[:300]}")
+
+    print(f"[RESEARCH] Claude нашёл: {len(opportunities)} кандидатов")
+
+    log = f"\n## {now_str()} — RESEARCH: {len(opportunities)} сигналов\n\n"
+    sent = 0
+
+    cat_emoji = {
+        "crypto": "₿", "politics": "🗳", "sports": "🏆",
+        "economy": "📈", "tech": "🤖", "geopolitics": "🌍", "other": "🔍"
+    }
+
+    for op in opportunities:
+        prob = float(op.get("our_probability", 0))
+        price = float(op.get("bet_price", 1))
+        ev = prob / price - 1 if price > 0 else 0
+        conviction = op.get("conviction", "MEDIUM")
+
+        if prob < 0.60 or price < 0.10 or price > 0.82 or ev < 0.12:
+            print(f"[RESEARCH] Пропускаю: {op.get('slug')} prob={prob:.2f} price={price:.2f} ev={ev:.2f}")
+            continue
+        if not op.get("external_evidence"):
+            print(f"[RESEARCH] Пропускаю (нет внешнего подтверждения): {op.get('slug')}")
+            continue
+
+        slug = op.get("slug", "")
+        outcome = op.get("bet_outcome", "YES")
+
+        if is_on_cooldown("RESEARCH", slug, outcome):
+            print(f"[RESEARCH] Cooldown: {slug}")
+            continue
+
+        cat = op.get("category", "other")
+        emoji = cat_emoji.get(cat, "🔍")
+        ev_pct = round(ev * 100)
+        payout = min(round(10 / price), 100)
+        question = op.get("question", "")[:90]
+        evidence = op.get("external_evidence", "")[:200]
+        risk = op.get("risk", "")[:150]
+        days = op.get("days_to_resolution", "?")
+
+        conv_icon = "🔥🔥" if conviction == "HIGH" else "🔥" if conviction == "MEDIUM" else "⚡"
+
+        msg = (
+            f"{conv_icon} *RESEARCH СИГНАЛ* {emoji} {cat.upper()}\n\n"
+            f"📋 *{question}*\n\n"
+            f"🔗 https://polymarket.com/event/{slug}\n\n"
+            f"━━━━━━━━━━━━━━━━━━\n"
+            f"✅ *СТАВИТЬ:* {outcome}\n"
+            f"💰 Цена: *{price*100:.0f}¢* \\| Наша оценка: *{prob*100:.0f}%*\n"
+            f"📈 *EV: \\+{ev_pct}%* \\| Conviction: *{conviction}*\n"
+            f"⏱ Резолюция через: *{days} дн\\.*\n"
+            f"━━━━━━━━━━━━━━━━━━\n"
+            f"📊 *Факт\\-основание:*\n{evidence}\n\n"
+            f"⚠️ *Риск:* {risk}\n"
+            f"━━━━━━━━━━━━━━━━━━\n"
+            f"💵 *$10 → ${payout} если выиграем*"
+        )
+
+        log += (
+            f"- [{cat}] {question[:60]}\n"
+            f"  {outcome}@{price:.2f} prob={prob:.0%} EV={ev_pct}%\n"
+            f"  Факт: {evidence[:80]}\n\n"
+        )
+
+        try:
+            send_telegram(msg)
+            mark_signal_sent("RESEARCH", slug, outcome)
+            record_signal("RESEARCH", {
+                "slug": slug,
+                "question": question,
+                "outcome": outcome,
+                "polymarket_url": f"https://polymarket.com/event/{slug}",
+                "poly_price": price,
+                "our_probability": prob,
+                "ev": ev,
+                "signal_score": round(ev * 100),
+                "days": days,
+                "category": cat,
+                "external_evidence": evidence,
+                "conviction": conviction,
+                "source": "Claude + CoinGecko + Metaculus",
+            })
+            sent += 1
+            print(f"[RESEARCH] ✅ [{cat}] {question[:50]}")
+        except Exception as e:
+            print(f"[RESEARCH] Telegram ошибка: {e}")
+
+    append_memory("SCAN-LOG.md", log)
+
+    if sent == 0 and should_send_no_opp("RESEARCH"):
+        send_telegram(
+            "🔍 *RESEARCH скан завершён*\n\n"
+            f"Проверено {len(candidates)} рынков по всем категориям\\. "
+            "Нет сигналов с внешним подтверждением и EV≥20%\\."
+        )
+        mark_no_opp_sent("RESEARCH")
+
+    print(f"[RESEARCH] DONE. {sent} сигналов.")
+
+
+# ─────────────────────────────────────────────────────────────
+# СТРАТЕГИЯ 4: SCAN — Математика + Claude
 # ─────────────────────────────────────────────────────────────
 def run_scan():
     """
@@ -1279,6 +1615,7 @@ def run_all():
         )
     run_arbi()
     run_smart()
+    run_research()
     run_scan()
     if REVIEW_IN_ALL:
         run_review()
@@ -1292,21 +1629,23 @@ def run_all():
 # ─────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     cmds = {
-        "all":     run_all,
-        "arbi":    run_arbi,
-        "smart":   run_smart,
-        "scan":    run_scan,
-        "review":  run_review,
-        "settle":  run_settle,
-        "report":  run_report,
-        "monitor": run_monitor,
+        "all":      run_all,
+        "arbi":     run_arbi,
+        "smart":    run_smart,
+        "research": run_research,
+        "scan":     run_scan,
+        "review":   run_review,
+        "settle":   run_settle,
+        "report":   run_report,
+        "monitor":  run_monitor,
     }
     if len(sys.argv) < 2 or sys.argv[1] not in cmds:
         print("Использование:")
-        print("  python3 scripts/analyze.py all      ← все 3 стратегии")
-        print("  python3 scripts/analyze.py arbi     ← Polymarket vs Букмекеры")
-        print("  python3 scripts/analyze.py smart    ← Умные деньги")
-        print("  python3 scripts/analyze.py scan     ← AI Анализ")
+        print("  python3 scripts/analyze.py all       ← все стратегии")
+        print("  python3 scripts/analyze.py arbi      ← Polymarket vs Букмекеры")
+        print("  python3 scripts/analyze.py smart     ← Умные деньги")
+        print("  python3 scripts/analyze.py research  ← Весь Polymarket + CoinGecko + Metaculus")
+        print("  python3 scripts/analyze.py scan      ← AI Анализ (legacy)")
         print("  python3 scripts/analyze.py review   ← проверка последних сигналов")
         print("  python3 scripts/analyze.py settle   ← фиксация закрытых сигналов")
         print("  python3 scripts/analyze.py report   ← отчёт по стратегиям")
