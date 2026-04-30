@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.polymarket.bot.scan</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Library/Frameworks/Python.framework/Versions/3.13/bin/python3</string>
+        <string>/Users/harut/Downloads/polymarket-bot/scripts/analyze.py</string>
+        <string>all</string>
+    </array>
+
+    <!-- Run every 10 minutes -->
+    <key>StartInterval</key>
+    <integer>600</integer>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/harut/Downloads/polymarket-bot</string>
+
+    <key>StandardOutPath</key>
+    <string>/Users/harut/Downloads/polymarket-bot/logs/scan.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/Users/harut/Downloads/polymarket-bot/logs/scan-error.log</string>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin</string>
+    </dict>
+</dict>
+</plist>

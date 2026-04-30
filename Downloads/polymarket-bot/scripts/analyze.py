@@ -201,8 +201,11 @@ def arbi_score(op):
     if 0.55 <= price <= 0.90: score += 10
     if liq >= 10000: score += 5
     if liq >= 50000: score += 5
-    if op["days"] <= 2: score += 15
-    if op["days"] <= 5: score += 5
+    hours = op.get("hours", op.get("days", 5) * 24)
+    if hours <= 3: score += 25
+    elif hours <= 6: score += 20
+    elif hours <= 12: score += 15
+    elif hours <= 24: score += 10
     return min(score, 100)
 
 def smart_score(op):
@@ -212,7 +215,11 @@ def smart_score(op):
     if op["buyer_count"] >= 2: score += 20
     if op["dominance"] >= SMART_MIN_DOMINANCE: score += 20
     if 0.20 <= op["avg_price"] <= 0.75: score += 10
-    if op["days"] <= 3: score += 10
+    hours = op.get("hours", 24)
+    if hours <= 3: score += 20
+    elif hours <= 6: score += 15
+    elif hours <= 12: score += 10
+    elif hours <= 24: score += 5
     return min(score, 100)
 
 # ─────────────────────────────────────────────────────────────
@@ -285,18 +292,30 @@ def run_arbi():
         print("[ARBI] Нет данных от букмекеров")
         return
 
-    # Загружаем Polymarket спортивные рынки
+    # Загружаем Polymarket спортивные рынки — только закрывающиеся через 10 мин — 24ч
+    now = datetime.now(timezone.utc)
     try:
         poly_markets = call_polymarket(["markets-filtered"])
-        short = [m for m in poly_markets
-                 if m.get("_days_left") and 1 <= m["_days_left"] <= 5]
+        short = []
+        for m in poly_markets:
+            end = m.get("endDate") or m.get("end_date_iso", "")
+            if not end:
+                continue
+            try:
+                end_dt = datetime.fromisoformat(end.replace("Z", "+00:00"))
+                hours_left = (end_dt - now).total_seconds() / 3600
+                if 0.17 <= hours_left <= 24:
+                    m["_hours_left"] = round(hours_left, 1)
+                    short.append(m)
+            except Exception:
+                continue
+        print(f"[ARBI] Polymarket рынков 10мин-24ч: {len(short)}")
     except Exception as e:
         print(f"[ARBI] Ошибка Polymarket: {e}")
         return
 
     # Ищем совпадения между букмекерами и Polymarket
     opportunities = []
-    now = datetime.now(timezone.utc)
 
     for game in bookie_games:
         home = game.get("home_team", "")
@@ -304,10 +323,10 @@ def run_arbi():
         commence = game.get("commence_time", "")
 
         try:
-            game_dt = datetime.fromisoformat(
-                commence.replace("Z", "+00:00"))
-            days_left = (game_dt - now).days
-            if not (0 <= days_left <= 5):
+            game_dt = datetime.fromisoformat(commence.replace("Z", "+00:00"))
+            hours_to_game = (game_dt - now).total_seconds() / 3600
+            # Матчи которые начинаются в течение 24 часов или уже идут
+            if not (-3 <= hours_to_game <= 24):
                 continue
         except Exception:
             continue
@@ -423,6 +442,7 @@ def run_arbi():
                     continue
 
                 actual_sport = game.get("sport", sport)
+                hours_left = pm.get("_hours_left", 24)
                 opportunities.append({
                     "slug": slug,
                     "question": pm.get("question") or pm.get("title",""),
@@ -434,7 +454,8 @@ def run_arbi():
                     "bookmaker_quotes": quote_count,
                     "edge": edge,
                     "ev": ev,
-                    "days": days_left,
+                    "hours": hours_left,
+                    "days": max(0, round(hours_left / 24, 1)),
                     "liq": float(pm.get("liquidity", 0) or 0),
                     "sport": actual_sport,
                     "home": home,
@@ -494,7 +515,7 @@ def run_arbi():
             f"\\({op['bookmaker'] or 'не указан'}\\)\n"
             f"📈 *Edge: \\+{edge_pct}%* \\| EV: *\\+{ev_pct}%*\n"
             f"🧮 Signal score: *{score}/100*\n"
-            f"⏱ Матч через: *{op['days']} дн\\.*\n"
+            f"⏱ Закрытие через: *{op['hours']:.1f} ч*\n"
             f"━━━━━━━━━━━━━━━━━━\n"
             f"💵 *$10 → ${payout} если выиграем*\n\n"
             f"🔍 *Логика:* Консенсус {op['consensus_prob']*100:.0f}% vs "
@@ -562,10 +583,24 @@ def run_smart():
     # Берём активные рынки с высокой ликвидностью
     try:
         poly_markets = call_polymarket(["markets-filtered"])
-        active = [m for m in poly_markets
-                  if m.get("_days_left") and 1 <= m["_days_left"] <= 7
-                  and float(m.get("liquidity", 0) or 0) > 50000]
-        print(f"[SMART] Активных рынков: {len(active)}")
+        now_smart = datetime.now(timezone.utc)
+        active = []
+        for m in poly_markets:
+            liq = float(m.get("liquidity", 0) or 0)
+            if liq < 50000:
+                continue
+            end = m.get("endDate") or m.get("end_date_iso", "")
+            if not end:
+                continue
+            try:
+                end_dt = datetime.fromisoformat(end.replace("Z", "+00:00"))
+                hours_left = (end_dt - now_smart).total_seconds() / 3600
+                if 0.17 <= hours_left <= 24:
+                    m["_hours_left"] = round(hours_left, 1)
+                    active.append(m)
+            except Exception:
+                continue
+        print(f"[SMART] Активных рынков 10мин-24ч: {len(active)}")
     except Exception as e:
         print(f"[SMART] Ошибка загрузки рынков: {e}")
         return
@@ -656,6 +691,11 @@ def run_smart():
                     condition_id = m.get("conditionId", "")
                     break
 
+            hours_left = float(m.get("_hours_left", 24) if m.get("slug") == slug else 24)
+            for mkt in active:
+                if mkt.get("slug") == slug:
+                    hours_left = mkt.get("_hours_left", 24)
+                    break
             consensus.append({
                 "slug": slug,
                 "title": title,
@@ -664,7 +704,8 @@ def run_smart():
                 "buyer_count": trade_count,
                 "total_size": total_size,
                 "dominance": dominance,
-                "days": days_left,
+                "hours": hours_left,
+                "days": max(0, round(hours_left / 24, 1)),
                 "condition_id": condition_id,
             })
 
@@ -839,15 +880,16 @@ def run_research():
         for m in all_markets:
             try:
                 liq = float(m.get("liquidity", 0) or 0)
-                if liq < 20000:
+                if liq < 10000:
                     continue
                 end = m.get("endDate") or m.get("end_date_iso", "")
                 if end:
                     end_dt = datetime.fromisoformat(end.replace("Z", "+00:00"))
-                    days = (end_dt - now).days
-                    if not (1 <= days <= 90):
+                    hours = (end_dt - now).total_seconds() / 3600
+                    if not (0.17 <= hours <= 24):
                         continue
-                    m["_days_left"] = days
+                    m["_hours_left"] = round(hours, 1)
+                    m["_days_left"] = round(hours / 24, 2)
                 else:
                     continue
                 outcomes = m.get("outcomes", "[]")
@@ -871,16 +913,15 @@ def run_research():
     # Фильтр: 1-21 день, цена 10-85¢ (интересная зона неопределённости)
     candidates = []
     for m in all_markets:
-        days = m.get("_days_left", 999)
+        hours = m.get("_hours_left", 0)
         prices = m.get("_prices_parsed", [])
         liq = float(m.get("liquidity", 0) or 0)
-        if not (1 <= days <= 90):
+        if not (0.17 <= hours <= 24):
             continue
         if liq < 10000:
             continue
-        # Смотрим только на цены в зоне 10-85¢ — там есть настоящая неопределённость
-        interesting = any(0.10 <= p <= 0.85 for p in prices)
-        if not interesting:
+        # Для быстрых событий допускаем любые цены — проверяем через внешние данные
+        if not prices:
             continue
         q = m.get("question") or m.get("title", "")
         m["_category"] = classify_market(q, m.get("slug", ""))
@@ -909,7 +950,7 @@ def run_research():
     for m in candidates:
         prices = m.get("_prices_parsed", [])
         outcomes = m.get("_outcomes_parsed", [])
-        days = m.get("_days_left", "?")
+        hours = m.get("_hours_left", "?")
         liq = float(m.get("liquidity", 0) or 0)
         vol = float(m.get("volume24hr", 0) or 0)
         cat = m.get("_category", "other")
@@ -919,12 +960,13 @@ def run_research():
         )
         q = m.get("question") or m.get("title", "")
         market_lines.append(
-            f"[{cat.upper()}] SLUG:{m.get('slug')} DAYS:{days} "
+            f"[{cat.upper()}] SLUG:{m.get('slug')} HOURS:{hours} "
             f"LIQ:${liq:,.0f} VOL24h:${vol:,.0f} "
             f"PRICES:[{price_str}] \"{q}\""
         )
 
     system_prompt = f"""Ты опытный трейдер на prediction markets. Сегодня {today}.
+ВСЕ РЫНКИ ЗАКРЫВАЮТСЯ ЧЕРЕЗ 10 МИНУТ — 24 ЧАСА. Нужны БЫСТРЫЕ ставки.
 
 ВНЕШНИЕ ДАННЫЕ ДЛЯ АНАЛИЗА:
 
@@ -935,16 +977,17 @@ def run_research():
 {metaculus_data}
 
 ТВОЯ ЗАДАЧА:
-Найди рынки где цена на Polymarket ЯВНО неправильная по сравнению с реальностью.
+Найди рынки где цена на Polymarket ЯВНО неправильная — событие уже почти случилось
+или точно НЕ случится в ближайшие часы.
 
 ПРАВИЛА ОТБОРА:
-1. Нужен конкретный внешний факт/данные подтверждающий твою оценку
-2. НЕ угадывай — если нет внешнего подтверждения, не включай рынок
-3. Для крипта-рынков: используй реальные цены выше
-4. Для политики: используй известные факты, опросы, базовые ставки
-5. Для Metaculus рынков: если видишь совпадение по теме — используй их прогноз
-6. our_probability ≥ 0.60 И bet_price ≤ 0.70
-7. EV = our_probability / bet_price - 1 ≥ 0.20
+1. Нужен конкретный внешний факт подтверждающий твою оценку
+2. Для крипта: текущая цена говорит сама за себя (BTC сейчас $X → "достигнет ли $Y за 24ч?")
+3. Для спорта: счёт матча, форма команд, контекст прямо сейчас
+4. Для политики/событий: что точно НЕ случится за 24 часа (базовые ставки)
+5. НЕ угадывай — только факты
+6. our_probability ≥ 0.65 И bet_price ≤ 0.80
+7. EV = our_probability / bet_price - 1 ≥ 0.12
 
 ФОРМАТ — только JSON массив:
 [{{
@@ -955,14 +998,14 @@ def run_research():
   "bet_price": 0.XX,
   "our_probability": 0.XX,
   "ev_percent": XX,
-  "days_to_resolution": N,
+  "days_to_resolution": "X.X часов",
   "liquidity": NNNNN,
   "conviction": "HIGH/MEDIUM/LOW",
   "external_evidence": "конкретный факт/источник подтверждающий оценку",
   "risk": "что может пойти не так"
 }}]
 
-Верни 3-5 лучших. Только рынки где есть реальный внешний факт."""
+Верни 3-5 лучших. Только рынки где есть реальный внешний факт. Приоритет — самые срочные."""
 
     user_prompt = (
         f"Проанализируй эти {len(candidates)} рынков и найди выигрышные ставки:\n\n"
@@ -1001,7 +1044,7 @@ def run_research():
         ev = prob / price - 1 if price > 0 else 0
         conviction = op.get("conviction", "MEDIUM")
 
-        if prob < 0.60 or price < 0.10 or price > 0.82 or ev < 0.12:
+        if prob < 0.65 or price < 0.005 or price > 0.98 or ev < 0.05:
             print(f"[RESEARCH] Пропускаю: {op.get('slug')} prob={prob:.2f} price={price:.2f} ev={ev:.2f}")
             continue
         if not op.get("external_evidence"):
@@ -1034,7 +1077,7 @@ def run_research():
             f"✅ *СТАВИТЬ:* {outcome}\n"
             f"💰 Цена: *{price*100:.0f}¢* \\| Наша оценка: *{prob*100:.0f}%*\n"
             f"📈 *EV: \\+{ev_pct}%* \\| Conviction: *{conviction}*\n"
-            f"⏱ Резолюция через: *{days} дн\\.*\n"
+            f"⏱ Закрытие через: *{op.get('days_to_resolution', '?')} ч*\n"
             f"━━━━━━━━━━━━━━━━━━\n"
             f"📊 *Факт\\-основание:*\n{evidence}\n\n"
             f"⚠️ *Риск:* {risk}\n"
