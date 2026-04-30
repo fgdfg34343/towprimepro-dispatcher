@@ -403,6 +403,11 @@ def run_arbi():
                 else:
                     continue
 
+                # Считаем edge до фильтров
+                edge = consensus_prob - poly_price
+                if edge < 0.10 or poly_price < 0.02 or poly_price > 0.90:
+                    continue
+
                 # Tier A: HIGH_CONFIDENCE_ONLY требует 80-98%
                 # Tier B: medium tier 65-79% требует больший edge и больше букмекеров
                 if HIGH_CONFIDENCE_ONLY:
@@ -412,11 +417,6 @@ def run_arbi():
                                  and len(home_probs if home_match else away_probs) >= MEDIUM_MIN_BOOKMAKERS)
                     if not is_high and not is_medium:
                         continue
-
-                # Edge: внешний консенсус думает больше чем Polymarket
-                edge = consensus_prob - poly_price
-                if edge < 0.10 or poly_price < 0.02 or poly_price > 0.90:
-                    continue
 
                 ev = consensus_prob / poly_price - 1
                 if ev < 0.30:
