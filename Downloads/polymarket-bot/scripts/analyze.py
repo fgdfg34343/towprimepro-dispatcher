@@ -152,6 +152,18 @@ def signal_instance_id(row):
 def signal_key(strategy, slug, outcome):
     return f"{strategy}:{slug}:{outcome}".lower()
 
+def event_url(market):
+    """Правильный URL события — берём event slug, не market slug."""
+    events = market.get("events") or []
+    if events and isinstance(events, list) and events[0].get("slug"):
+        return f"https://polymarket.com/event/{events[0]['slug']}"
+    return f"https://polymarket.com/event/{market.get('slug', '')}"
+
+def event_url_from_slug_and_events(slug, events_list):
+    if events_list and isinstance(events_list, list) and events_list[0].get("slug"):
+        return f"https://polymarket.com/event/{events_list[0]['slug']}"
+    return f"https://polymarket.com/event/{slug}"
+
 def is_on_cooldown(strategy, slug, outcome):
     state = load_json_memory("SIGNAL-STATE.json", {})
     key = signal_key(strategy, slug, outcome)
@@ -443,6 +455,12 @@ def run_arbi():
 
                 actual_sport = game.get("sport", sport)
                 hours_left = pm.get("_hours_left", 24)
+                pm_events = pm.get("_events") or pm.get("events") or []
+                if isinstance(pm_events, str):
+                    try: pm_events = json.loads(pm_events)
+                    except: pm_events = []
+                event_slug = (pm_events[0].get("slug") if pm_events else None) or slug
+                poly_url = f"https://polymarket.com/event/{event_slug}"
                 opportunities.append({
                     "slug": slug,
                     "question": pm.get("question") or pm.get("title",""),
@@ -462,6 +480,7 @@ def run_arbi():
                     "away": away,
                     "commence_time": commence,
                     "tier": "A" if consensus_prob >= MIN_CONSENSUS_PROB else "B",
+                    "poly_url": poly_url,
                     "source": f"The Odds API /v4/sports/{actual_sport}/odds and Polymarket Gamma markets"
                 })
 
@@ -505,7 +524,7 @@ def run_arbi():
             f"{tier_label}\n\n"
             f"{sport_emoji} *{op['home']} vs {op['away']}*\n"
             f"📋 {op['question'][:80]}\n\n"
-            f"🔗 https://polymarket.com/event/{op['slug']}\n\n"
+            f"🔗 {op.get('poly_url', 'https://polymarket.com/event/' + op['slug'])}\n\n"
             f"━━━━━━━━━━━━━━━━━━\n"
             f"✅ *ЧТО СТАВИТЬ:* {op['outcome']}\n"
             f"💰 Цена Polymarket: *{fmt_cents(op['poly_price'])}*\n"
@@ -534,7 +553,7 @@ def run_arbi():
             "slug": op["slug"],
             "question": op["question"],
             "outcome": op["outcome"],
-            "polymarket_url": f"https://polymarket.com/event/{op['slug']}",
+            "polymarket_url": op.get("poly_url", f"https://polymarket.com/event/{op["slug"]}"),
             "poly_price": op["poly_price"],
             "bookie_probability": op["consensus_prob"],
             "bookie_odds": op["bookie_odds"],
@@ -733,7 +752,7 @@ def run_smart():
         msg = (
             f"👀 *УМНЫЕ ДЕНЬГИ — КРУПНЫЕ СДЕЛКИ*\n\n"
             f"📋 *{op['title']}*\n\n"
-            f"🔗 https://polymarket.com/event/{op['slug']}\n\n"
+            f"🔗 {op.get('poly_url', 'https://polymarket.com/event/' + op['slug'])}\n\n"
             f"━━━━━━━━━━━━━━━━━━\n"
             f"✅ *ЧТО СТАВИТЬ:* {op['outcome']}\n"
             f"💰 Средняя цена входа: *{fmt_cents(avg_price)}*\n"
@@ -764,7 +783,7 @@ def run_smart():
             "slug": op["slug"],
             "question": op["title"],
             "outcome": op["outcome"],
-            "polymarket_url": f"https://polymarket.com/event/{op['slug']}",
+            "polymarket_url": op.get("poly_url", f"https://polymarket.com/event/{op["slug"]}"),
             "avg_price": op["avg_price"],
             "large_buy_count": op["buyer_count"],
             "total_size": op["total_size"],
@@ -900,6 +919,14 @@ def run_research():
                 if isinstance(prices, str):
                     prices = json.loads(prices)
                 m["_prices_parsed"] = [float(p) for p in prices if p]
+                # Сохраняем events для правильной генерации URL
+                events = m.get("events", [])
+                if isinstance(events, str):
+                    try:
+                        events = json.loads(events)
+                    except Exception:
+                        events = []
+                m["_events"] = events
                 parsed.append(m)
             except Exception:
                 continue
@@ -959,8 +986,10 @@ def run_research():
             if 0.05 <= p <= 0.95
         )
         q = m.get("question") or m.get("title", "")
+        event_slug = (m.get("_events") or [{}])[0].get("slug") or m.get("slug","")
+        m["_event_url"] = f"https://polymarket.com/event/{event_slug}"
         market_lines.append(
-            f"[{cat.upper()}] SLUG:{m.get('slug')} HOURS:{hours} "
+            f"[{cat.upper()}] SLUG:{m.get('slug')} EVENT_URL:{m['_event_url']} HOURS:{hours} "
             f"LIQ:${liq:,.0f} VOL24h:${vol:,.0f} "
             f"PRICES:[{price_str}] \"{q}\""
         )
@@ -1058,6 +1087,13 @@ def run_research():
             print(f"[RESEARCH] Cooldown: {slug}")
             continue
 
+        # Ищем правильный event URL из списка кандидатов
+        poly_url = f"https://polymarket.com/event/{slug}"
+        for cand in candidates:
+            if cand.get("slug") == slug and cand.get("_event_url"):
+                poly_url = cand["_event_url"]
+                break
+
         cat = op.get("category", "other")
         emoji = cat_emoji.get(cat, "🔍")
         ev_pct = round(ev * 100)
@@ -1072,7 +1108,7 @@ def run_research():
         msg = (
             f"{conv_icon} *RESEARCH СИГНАЛ* {emoji} {cat.upper()}\n\n"
             f"📋 *{question}*\n\n"
-            f"🔗 https://polymarket.com/event/{slug}\n\n"
+            f"🔗 {poly_url}\n\n"
             f"━━━━━━━━━━━━━━━━━━\n"
             f"✅ *СТАВИТЬ:* {outcome}\n"
             f"💰 Цена: *{price*100:.0f}¢* \\| Наша оценка: *{prob*100:.0f}%*\n"
@@ -1098,7 +1134,7 @@ def run_research():
                 "slug": slug,
                 "question": question,
                 "outcome": outcome,
-                "polymarket_url": f"https://polymarket.com/event/{slug}",
+                "polymarket_url": poly_url,
                 "poly_price": price,
                 "our_probability": prob,
                 "ev": ev,
